@@ -1,19 +1,31 @@
 package com.teamten.trs80;
 
+import com.google.common.io.LittleEndianDataOutputStream;
+import com.google.common.primitives.Shorts;
+import com.sun.xml.internal.messaging.saaj.util.ByteOutputStream;
+
+import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.List;
 
 public class CassetteReader {
     private static final int HZ = 44100;
 
     public static void main(String[] args) throws Exception {
 //        File file = new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/E3.wav");
-        File file = new File("/Users/lk/Downloads/E3-1.wav");
+//        File file = new File("/Users/lk/Downloads/E3-1.wav");
+        File file = new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/L-2-8.wav");
+//        File file = new File("/Users/lk/Downloads/E1-1.wav");
         AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(file);
         AudioFormat format = audioInputStream.getFormat();
         System.out.println(format);
@@ -36,20 +48,30 @@ public class CassetteReader {
             throw new IllegalStateException("File must be 2 bytes per frame");
         }
 
-        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        BitStream<Integer> bs = new BitStream<>();
 
-        // Read entire file.
-        long frameCount = audioInputStream.getFrameLength();
-        int byteCount = (int) (frameCount*format.getFrameSize());
+        // Read entire file as bytes.
+        int frameCount = (int) audioInputStream.getFrameLength();
+        int byteCount = frameCount*format.getFrameSize();
         byte[] bytes = new byte[byteCount];
         int bytesRead = audioInputStream.read(bytes);
         if (bytesRead != byteCount) {
             throw new IllegalStateException("Wanted to read " + byteCount + " but read " + bytesRead);
         }
 
-        // Put out the part we want.
-        int frameNumber = 0*HZ;
-        int length = (int) audioInputStream.getFrameLength();
+        // Convert to samples. Samples are little-endian.
+        short[] frames = new short[frameCount];
+        int byteIndex = 0;
+        int maxValue = 0;
+        for (int frame = 0; frame < frameCount; frame++, byteIndex += 2) {
+            // Java bytes are signed. They sign-extend when converted to int, which is what
+            // you want for the MSB but not the LSB.
+            int value = ((int) bytes[byteIndex + 1] << 8) | ((int) bytes[byteIndex] & 0xFF);
+            frames[frame] = (short) value;
+            maxValue = Math.max(maxValue, value);
+        }
+
+        // Pick out the bits.
         int oldSign = 0;
         int halfCycleSize = 0;
         int cycleSize = 0;
@@ -57,28 +79,29 @@ public class CassetteReader {
         int[] negativeHistogram = new int[100];
         int[] histogram = new int[100];
         int max = 0;
-        byte currentByte = 0;
+        int threshold = maxValue/10;
+        boolean first = true;
+        int last16Bits = 0;
+        ByteOutputStream bos = new ByteOutputStream();
+        boolean inProgram = false;
         int bitCount = 0;
-        for (int frame = frameNumber; frame < frameNumber + length; frame++) {
-            // Java bytes are signed. They sign-extend when converted to int, which is what
-            // you want for the MSB but not the LSB.
-            int byteIndex = frame*format.getFrameSize();
-            int value = ((int) bytes[byteIndex + 1] << 8) | ((int) bytes[byteIndex] & 0xFF);
-//            System.out.println(value);
-            int newSign = value > 5000 ? 1
-                    : value < -5000 ? -1
+        byteCount = 0;
+        boolean endOfProgram = false;
+        System.out.printf("Total recording time: %f\n", (float)frameCount/HZ);
+        for (int frame = 0; frame < frameCount && !endOfProgram; frame++) {
+            int value = frames[frame];
+            int newSign = value > threshold ? 1
+                    : value < -threshold ? -1
                     : 0;
 
             if (oldSign != 0 && newSign != 0 && oldSign != newSign) {
                 // Zero-crossing.
                 if (oldSign == 1) {
-//                    System.out.println("P" + halfCycleSize);
                     if (halfCycleSize < positiveHistogram.length) {
                         positiveHistogram[halfCycleSize] += 1;
                         max = Math.max(max, halfCycleSize);
                     }
                 } else {
-//                    System.out.println("        N" + halfCycleSize);
                     if (halfCycleSize < negativeHistogram.length) {
                         negativeHistogram[halfCycleSize] += 1;
                         max = Math.max(max, halfCycleSize);
@@ -86,19 +109,43 @@ public class CassetteReader {
                     if (cycleSize < histogram.length) {
                         histogram[cycleSize] += 1;
                         max = Math.max(max, cycleSize);
-                        if (cycleSize > 7 && cycleSize < 44) {
-                            // Long cycle is "0", short cycle is "1".
-                            int bit = cycleSize < 22 ? 1 : 0;
-                            // Bits are MSb to LSb.
-                            currentByte |= (byte) (bit << (7 - bitCount));
+                    }
+                    if (cycleSize > 7 && cycleSize < 44) {
+                        // Long cycle is "0", short cycle is "1".
+                        boolean bit = cycleSize < 22;
+                        // Bits are MSb to LSb.
+                        if (first) {
+                            first = false;
+                        } else {
+                            bs.addBit(bit, frame);
+                        }
+                        last16Bits = ((last16Bits << 1) | (bit ? 1 : 0)) & 0xFFFF;
+                        if (inProgram) {
                             bitCount += 1;
-                            if (bitCount == 8) {
-                                os.write(currentByte);
-                                currentByte = 0;
+
+                            if (bitCount == 9) {
+                                if ((last16Bits & 0x100) != 0) {
+                                    System.out.printf("Bad start bit at byte %d, time %f.\n", byteCount, (double) frame/HZ);
+                                }
+                                bos.write(last16Bits & 0xFF);
+                                byteCount += 1;
                                 bitCount = 0;
                             }
+                        } else {
+                            if (last16Bits == 0x557F) {
+                                System.out.printf("Found end of header at byte %d, frame %d, time %f.\n", bs.getByteCount(), frame, (double) frame/HZ);
+                                bs.clear();
+                                inProgram = true;
+                                bitCount = 1;
+                                last16Bits = 0;
+                            }
                         }
+                    } else if (inProgram && byteCount > 0 && cycleSize > 66) {
+                        // 1.5 ms gap, end of recording.
+                        System.out.printf("End of program found at byte %d, frame %d, time %f.\n", bs.getByteCount(), frame, (double) frame/HZ);
+                        endOfProgram = true;
                     }
+
                     cycleSize = 0;
                 }
                 halfCycleSize = 0;
@@ -112,12 +159,35 @@ public class CassetteReader {
             }
         }
 
-        if (bitCount > 0) {
-            System.out.println("Warning: Had " + bitCount + " bits left over");
+        if (!inProgram) {
+            System.out.println("Didn't find header.");
+            return;
         }
 
-        os.close();
-        byte[] outputBytes = os.toByteArray();
+        System.out.printf("Leftover bits: %d\n", bitCount);
+
+        {
+            byte[] outputBytes = bos.getBytes();
+            System.out.printf("First three bytes: 0x%02x 0x%02x 0x%02x\n",
+                    outputBytes[0], outputBytes[1], outputBytes[2]);
+            OutputStream fos = new FileOutputStream("/Users/lk/tmp/out2.bin");
+            fos.write(outputBytes);
+            fos.close();
+
+            short[] audio = generateAudio(outputBytes);
+            writeWavFile(audio, new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/Generated.wav"));
+
+            if (outputBytes.length > 0) {
+                return;
+            }
+        }
+
+        bs = bs.deleteBits(8, 9);
+
+        byte[] outputBytes = bs.toByteArray();
+
+        System.out.printf("First three bytes: 0x%02x 0x%02x 0x%02x\n",
+                outputBytes[0], outputBytes[1], outputBytes[2]);
 
         int firstByte = 0;
         for (int i = 0; i < outputBytes.length; i++) {
@@ -126,78 +196,128 @@ public class CassetteReader {
                 break;
             }
         }
-        System.out.println("First byte: " + firstByte);
+        System.out.println("First byte: " + firstByte + " of " + outputBytes.length);
 
-        {
-            int highlight = -1;
-            int i = 0;
-            outer: while (true) {
-                byte b = outputBytes[0360 + i];
-                for (int bit = 0x80; bit != 0; bit >>= 1) {
-                    if (highlight == 0) {
-                        System.out.print("(");
-                    }
-                    int value = (b & bit) != 0 ? 1 : 0;
-                    System.out.print(value);
-                    if (highlight == 0) {
-                        System.out.print(")");
-                        if (value == 1) {
-                            break outer;
-                        }
-                        highlight = 9;
-                    }
-                    highlight -= 1;
-                }
-                System.out.print(" ");
-                if (0360 + i == firstByte) {
-                    highlight = 0;
-                }
-                i += 1;
-            }
-            System.out.println();
-            System.out.println(i);
-            System.out.println(outputBytes.length);
-        }
+        // Find places where the header changes.
+        if (false) {
+            int counter = 0;
+            for (int i = 0; i < firstByte; i++) {
+                if (outputBytes[i] != outputBytes[i + 1] &&
+                        (outputBytes[i] == 0x55 || outputBytes[i] == (byte) 0xAA ||
+                                outputBytes[i + 1] == 0x55 || outputBytes[i + 1] == (byte) 0xAA)) {
 
-        // Find shift by seeing where the start bit might be.
-        int[] zeroCount = new int[9];
-        for (int shift = 0; shift < zeroCount.length; shift++) {
-            System.out.print(shift + ": ");
-            for (int i = firstByte; i < outputBytes.length; i++) {
-                int bit = 7 - (shift + i)%9;
-                if (bit >= 0) {
-                    int value = 1 << bit;
-                    int bitValue = (outputBytes[i] & value) == 0 ? 0 : 1;
-                    if (i < firstByte + 200) {
-                        System.out.print(bitValue);
+                    System.out.printf("-------------------- 0x%02x 0x%02x at %d\n",
+                            outputBytes[i], outputBytes[i + 1], i);
+                    for (int j = i*8; j < i*8 + 16; j++) {
+                        int frameNumber = bs.getExtra(j);
+                        System.out.printf("    %d   %.4f\n",
+                                bs.getBit(j) ? 1 : 0,
+                                (double) frameNumber/HZ);
                     }
-                    if (bitValue == 0) {
-                        zeroCount[shift] += 1;
+                    int firstFrame = bs.getExtra(i*8);
+                    int lastFrame = bs.getExtra(i*8 + 16);
+
+                    PrintWriter w = new PrintWriter("/Users/lk/tmp/out-" + counter++ + ".txt");
+                    w.printf("Time [domain]\tAudio\n");
+                    for (int frame = firstFrame; frame < lastFrame; frame++) {
+                        w.printf("%f %d\n", (double) frame/HZ, frames[frame]);
                     }
+                    w.close();
                 }
             }
-            System.out.println();
-        }
-        for (int i = 0; i < zeroCount.length; i++) {
-            System.out.printf("%d: %d zeros\n", i, zeroCount[i]);
+
+            bs = bs.deleteBits(firstByte*8 + 8, 9);
+            outputBytes = bs.toByteArray();
         }
 
-        // Generate output files.
-        for (int shift = 0; shift < 8; shift++) {
-            OutputStream fos = new FileOutputStream("/Users/lk/tmp/out-" + shift + ".bin");
-            for (int i = 0; i < outputBytes.length - 1; i++) {
-                byte thisByte = (byte) (outputBytes[i] << shift);
-                byte nextByte = (byte) (((int) outputBytes[i + 1] & 0xFF) >>> (8 - shift));
-                byte b = (byte) (thisByte | nextByte);
-                fos.write(b);
-            }
-            fos.close();
-        }
+        // Generate output file.
+        OutputStream fos = new FileOutputStream("/Users/lk/tmp/out.bin");
+        fos.write(outputBytes);
+        fos.close();
 
         System.out.println("count [domain]\tpositive\tnegative\tcycle");
         for (int i = 0; i <= max; i++) {
             System.out.printf("%d %d %d %d\n", i, positiveHistogram[i], negativeHistogram[i], histogram[i]);
         }
     }
+
+    private static short[] generateAudio(byte[] program) {
+        List<short[]> samples = new ArrayList<>();
+
+        // Generate bit patterns.
+        short[] zero = generateCycle(32);
+        short[] one = generateCycle(15);
+
+        // Start with half a second of silence.
+        samples.add(new short[HZ/2]);
+
+        // Half a second of 0x55.
+        int cycles = 0;
+        while (cycles < HZ/2) {
+            cycles += addByte(samples, 0x55, zero, one);
+        }
+        addByte(samples, 0x7F, zero, one);
+
+        // Write program.
+        for (byte b : program) {
+            // Start bit.
+            samples.add(zero);
+            addByte(samples, b, zero, one);
+        }
+
+        // End with half a second of silence.
+        samples.add(new short[HZ]);
+
+        return Shorts.concat(samples.toArray(new short[0][]));
+    }
+
+    private static int addByte(List<short[]> samples, int b, short[] zero, short[] one) {
+        int sampleCount = 0;
+
+        // MSb first.
+        for (int i = 7; i >= 0; i--) {
+            if ((b & (1 << i)) != 0) {
+                samples.add(one);
+                sampleCount += one.length;
+            } else {
+                samples.add(zero);
+                sampleCount += zero.length;
+            }
+        }
+
+        return sampleCount;
+    }
+
+    private static short[] generateCycle(int length) {
+        short[] audio = new short[length];
+
+        for (int i = 0; i < length; i++) {
+            double t = 2*Math.PI*i/length;
+            double value = Math.sin(t);
+            // -0.5 to 0.5, matches recorded audio.
+            short shortValue = (short) (value * 16384);
+            audio[i] = shortValue;
+        }
+
+        return audio;
+    }
+
+    private static void writeWavFile(short[] samples, File file) throws IOException {
+        // Generate byte array.
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        LittleEndianDataOutputStream littleEndianDataOutputStream = new LittleEndianDataOutputStream(byteArrayOutputStream);
+        for (short sample : samples) {
+            littleEndianDataOutputStream.writeShort(sample);
+        }
+
+        // Write file.
+        AudioFormat format = new AudioFormat(HZ,16,1,true,false);
+        ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
+        AudioInputStream audioInputStream = new AudioInputStream(byteArrayInputStream, format, samples.length);
+        AudioSystem.write(audioInputStream, AudioFileFormat.Type.WAVE, file);
+    }
 }
 // 1ms pause at 11.920
+// Long cycle is "0", short cycle is "1".
+// Chose long for zero, but there are many more zeros than ones.
+// Baud is odd term since symbols take different amounts of time.

@@ -1,10 +1,14 @@
 package com.teamten.trs80;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
-public class BitStream {
+public class BitStream<T> implements Iterable<Boolean> {
     private byte[] mBytes;
     private int mBitCount;
+    private Map<Integer,T> mExtras = new HashMap<>();
 
     public BitStream() {
         mBytes = new byte[1024];
@@ -28,8 +32,20 @@ public class BitStream {
         mBitCount += 1;
     }
 
-    public byte[] getBytes() {
-        return mBytes;
+    public void addBit(boolean value, T extra) {
+        if (extra != null) {
+            mExtras.put(mBitCount, extra);
+        }
+        addBit(value);
+    }
+
+    public void clear() {
+        Arrays.fill(mBytes, (byte) 0);
+        mBitCount = 0;
+    }
+
+    public byte[] toByteArray() {
+        return Arrays.copyOf(mBytes, getByteCount());
     }
 
     public int getByteCount() {
@@ -49,5 +65,42 @@ public class BitStream {
         int bitIndex = 7 - index%8;
 
         return (mBytes[byteIndex] & (1 << bitIndex)) != 0;
+    }
+
+    public T getExtra(int index) {
+        return mExtras.get(index);
+    }
+
+    public Iterator<Boolean> iterator() {
+        return new Iterator<Boolean >() {
+            private int mBitIndex = 0;
+
+            @Override
+            public boolean hasNext() {
+                return mBitIndex < mBitCount;
+            }
+
+            @Override
+            public Boolean next() {
+                return getBit(mBitIndex++);
+            }
+        };
+    }
+
+    /**
+     * Deletes bits starting with the one at startBitIndex,
+     * and every "stride" bits after that. For example, a stride
+     * of 1 deletes every bit. Returns a new BitStream.
+     */
+    public BitStream<T> deleteBits(int startBitIndex, int stride) {
+        BitStream<T> newBitStream = new BitStream<>();
+
+        for (int index = 0; index < mBitCount; index++) {
+            if (index < startBitIndex || (index - startBitIndex) % stride != 0) {
+                newBitStream.addBit(getBit(index), getExtra(index));
+            }
+        }
+
+        return newBitStream;
     }
 }
