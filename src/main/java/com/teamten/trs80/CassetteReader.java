@@ -105,16 +105,17 @@ public class CassetteReader {
         }
 
         frames = highPassFilter(frames, 50);
-        writeWavFile(frames, new File("/Users/lk/tmp/out.wav"));
+//        writeWavFile(frames, new File("/Users/lk/tmp/out.wav"));
 
         System.out.printf("Total recording time: %f\n", (float) frameCount/HZ);
 
-        int trackNumber = 1;
+        int instanceNumber = 1;
+        int trackNumber = 0;
         int copyNumber = 1;
         int frame = 0;
         List<Double> newPrograms = new ArrayList<>();
         while (true) {
-            System.out.println("---------------------------------------");
+            System.out.println("--------------------------------------- " + instanceNumber);
 
             // Pick out the bits.
             Deque<BitData> bitHistory = new ArrayDeque<>();
@@ -124,6 +125,7 @@ public class CassetteReader {
             int[] histogram = new int[100];
             int max = 0;
             int threshold = maxValue/10;
+            threshold = 500; // XXX hard-code because basing it on max is dangerous.
             boolean first = true;
             int last16Bits = 0;
             ByteOutputStream bos = new ByteOutputStream();
@@ -164,18 +166,22 @@ public class CassetteReader {
                                 bitCount += 1;
 
                                 if (bitCount == 1) {
-                                    if ((last16Bits & 0x1) != 0 && !skipProgram) {
-                                        System.out.printf("Bad start bit at byte %d, %s, cycle size %d.\n",
+                                    if (((last16Bits & 0x1) != 0 || (instanceNumber == 4 && byteCount == -1)) && !skipProgram) {
+                                        System.out.printf("Bad start bit at byte %d, %s, cycle size %d. ******************\n",
                                                 byteCount, timeToTimestamp((double) frame/HZ), cycleSize);
                                         bitType = BitType.BAD;
-                                        dump = 3;
+                                        dump = 1;
                                         skipProgram = true;
                                     } else {
                                         bitType = BitType.START;
                                     }
                                 }
                                 if (bitCount == 9) {
-                                    bos.write(last16Bits & 0xFF);
+                                    int b = last16Bits & 0xFF;
+                                    bos.write(b);
+                                    if (byteCount < 3 && b != 0xd3) {
+                                        System.out.printf("    Byte %d: 0x%02x\n", byteCount, b);
+                                    }
                                     byteCount += 1;
                                     bitCount = 0;
                                 }
@@ -183,14 +189,14 @@ public class CassetteReader {
                                 if (last16Bits == 0x557F) {
                                     double now = (double) frame/HZ;
                                     double leadTime = (double) (frame - searchFrameStart)/HZ;
-                                    System.out.printf("Found end of header at byte %d, frame %d, %s, lead time %f.\n",
-                                            bs.getByteCount(), frame,
-                                            timeToTimestamp(now), leadTime);
                                     if (leadTime > 30 || newPrograms.isEmpty()) {
                                         newPrograms.add(now);
                                         trackNumber += 1;
                                         copyNumber = 1;
                                     }
+                                    System.out.printf("Found end of header for %d-%d at byte %d, frame %d, %s, lead time %f.\n",
+                                            trackNumber, copyNumber, bs.getByteCount(), frame,
+                                            timeToTimestamp(now), leadTime);
                                     bs.clear();
                                     inProgram = true;
                                     bitCount = 1;
@@ -205,7 +211,7 @@ public class CassetteReader {
                                 }
                                 if (dump >= 0) {
                                     if (dump == 0) {
-                                        // dumpBitHistory(bitHistory, frames);
+                                        dumpBitHistory(bitHistory, frames, threshold, "/Users/lk/tmp/out-" + instanceNumber +".png");
                                     }
                                     dump -= 1;
                                 }
@@ -241,7 +247,7 @@ public class CassetteReader {
                 byte[] outputBytes = bos.getBytes();
                 System.out.printf("First three bytes: 0x%02x 0x%02x 0x%02x\n",
                         outputBytes[0], outputBytes[1], outputBytes[2]);
-                OutputStream fos = new FileOutputStream("/Users/lk/tmp/out2.bin");
+                OutputStream fos = new FileOutputStream("/Users/lk/tmp/out-" + trackNumber + "-" + copyNumber + ".bin");
                 fos.write(outputBytes);
                 fos.close();
 
@@ -251,6 +257,7 @@ public class CassetteReader {
             }
 
             copyNumber += 1;
+            instanceNumber += 1;
         }
 
         System.out.println("New programs at:");
@@ -398,7 +405,7 @@ public class CassetteReader {
         AudioSystem.write(audioInputStream, AudioFileFormat.Type.WAVE, file);
     }
 
-    private static void dumpBitHistory(Collection<BitData> bitHistory, short samples[]) throws IOException {
+    private static void dumpBitHistory(Collection<BitData> bitHistory, short samples[], int threshold, String pathname) throws IOException {
         // Find width of entire image.
         int minFrame = Integer.MAX_VALUE;
         int maxFrame = Integer.MIN_VALUE;
@@ -467,7 +474,15 @@ public class CassetteReader {
             }
         }
 
-        ImageUtils.save(image, "/Users/lk/tmp/out.png");
+        g.setColor(Color.GRAY);
+        int y = height/2;
+        g.drawLine(0, y, width - 1, y);
+        y = threshold*(height/2)/32768 + height/2;
+        g.drawLine(0, y, width - 1, y);
+        y = -threshold*(height/2)/32768 + height/2;
+        g.drawLine(0, y, width - 1, y);
+
+        ImageUtils.save(image, pathname);
     }
 
     private static short[] highPassFilter(short[] samples, int size) {
