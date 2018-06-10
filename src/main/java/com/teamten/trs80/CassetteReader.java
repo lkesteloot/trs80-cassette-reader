@@ -2,7 +2,6 @@ package com.teamten.trs80;
 
 import com.google.common.io.LittleEndianDataOutputStream;
 import com.google.common.primitives.Shorts;
-import com.sun.xml.internal.messaging.saaj.util.ByteOutputStream;
 import com.teamten.image.ImageUtils;
 
 import javax.sound.sampled.AudioFileFormat;
@@ -27,7 +26,17 @@ import java.util.List;
 public class CassetteReader {
     private static final int HZ = 44100;
     private static final int MAX_BIT_HISTORY = 30;
+    private static final int LOW_SPEED_PULSE_PEAK_DISTANCE = 7;
+    private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
+    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/L-4-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-5.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-2-";
+    private static final int LOW_SPEED_MIN_PERIOD = 22;
+    private static final int LOW_SPEED_BIT_DIFFERENTIATOR = 68;
+    private static final int LOW_SPEED_MAX_SILENCE = HZ/10;
 
+    enum Speed { UNDETERMINED, LOW, HIGH }
     enum BitType { ZERO, ONE, START, BAD }
 
     private static class BitData {
@@ -55,10 +64,7 @@ public class CassetteReader {
     }
 
     public static void main(String[] args) throws Exception {
-//        File file = new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/E3.wav");
-//        File file = new File("/Users/lk/Downloads/E3-1.wav");
-        File file = new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/L-2.wav");
-//        File file = new File("/Users/lk/Downloads/E1-1.wav");
+        File file = new File(INPUT_PATHNAME);
         AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(file);
         AudioFormat format = audioInputStream.getFormat();
         System.out.println(format);
@@ -91,6 +97,7 @@ public class CassetteReader {
         if (bytesRead != byteCount) {
             throw new IllegalStateException("Wanted to read " + byteCount + " but read " + bytesRead);
         }
+        int[] lowSpeedHistogram = new int[128];
 
         // Convert to samples. Samples are little-endian.
         short[] frames = new short[frameCount];
@@ -113,7 +120,8 @@ public class CassetteReader {
         int trackNumber = 0;
         int copyNumber = 1;
         int frame = 0;
-        List<Double> newPrograms = new ArrayList<>();
+        List<Integer> newPrograms = new ArrayList<>();
+        short[] pulseFrames = new short[frameCount];
         while (true) {
             System.out.println("--------------------------------------- " + instanceNumber);
 
@@ -128,7 +136,7 @@ public class CassetteReader {
             threshold = 500; // XXX hard-code because basing it on max is dangerous.
             boolean first = true;
             int last16Bits = 0;
-            ByteOutputStream bos = new ByteOutputStream();
+            ByteArrayOutputStream programBytes = new ByteArrayOutputStream();
             boolean inProgram = false;
             int bitCount = 0;
             byteCount = 0;
@@ -136,103 +144,170 @@ public class CassetteReader {
             boolean skipProgram = false;
             int dump = -1;
             int searchFrameStart = frame;
+            int lastSlowSpeedPulseFrame = 0;
+            boolean eatNextSlowSpeedBit = false;
+            int lowSpeedBitCount = -1;
+            int lowSpeedLast16Bits = 0;
+            boolean lowSpeedLenientFirstBit = false;
+            Speed speed = Speed.UNDETERMINED;
             for (; frame < frameCount && !endOfProgram; frame++) {
                 int value = frames[frame];
-                int newSign = value > threshold ? 1
-                        : value < -threshold ? -1
-                        : 0;
 
-                if (oldSign != 0 && newSign != 0 && oldSign != newSign) {
-                    // Zero-crossing.
-                    if (oldSign == -1) {
-                        if (cycleSize < histogram.length) {
-                            histogram[cycleSize] += 1;
-                            max = Math.max(max, cycleSize);
+                // Low speed.
+                if (speed != Speed.HIGH) {
+                    int pulse = frame >= LOW_SPEED_PULSE_PEAK_DISTANCE ? frames[frame - LOW_SPEED_PULSE_PEAK_DISTANCE] - value : 0;
+                    pulseFrames[frame] = (short) clamp(pulse, Short.MIN_VALUE, Short.MAX_VALUE);
+
+                    int timeDiff = frame - lastSlowSpeedPulseFrame;
+                    if (timeDiff > LOW_SPEED_MAX_SILENCE && lowSpeedBitCount >= 0) {
+                        // End of program.
+                        endOfProgram = true;
+                        System.out.println("End of low-speed program at " + frameToTimestamp(frame));
+                    } else if (pulse > 10000 && timeDiff > LOW_SPEED_MIN_PERIOD) {
+                        if (timeDiff < lowSpeedHistogram.length) {
+                            lowSpeedHistogram[timeDiff] += 1;
                         }
-                        if (cycleSize > 7 && cycleSize < 44) {
-                            // Long cycle is "0", short cycle is "1".
-                            boolean bit = cycleSize < 22;
-
-                            BitType bitType = bit ? BitType.ONE : BitType.ZERO;
-
-                            // Bits are MSb to LSb.
-                            if (first) {
-                                first = false;
-                            } else {
-                                bs.addBit(bit, frame);
+                        boolean bit = timeDiff < LOW_SPEED_BIT_DIFFERENTIATOR;
+                        if (eatNextSlowSpeedBit) {
+                            if (!bit && !lowSpeedLenientFirstBit) {
+                                System.out.println("Warning: At bit of wrong value at " +
+                                        frameToTimestamp(frame) + ", diff = " + timeDiff + ", last = " +
+                                        frameToTimestamp(lastSlowSpeedPulseFrame));
                             }
-                            last16Bits = ((last16Bits << 1) | (bit ? 1 : 0)) & 0xFFFF;
-                            if (inProgram) {
-                                bitCount += 1;
-
-                                if (bitCount == 1) {
-                                    if (((last16Bits & 0x1) != 0 || (instanceNumber == 4 && byteCount == -1)) && !skipProgram) {
-                                        System.out.printf("Bad start bit at byte %d, %s, cycle size %d. ******************\n",
-                                                byteCount, timeToTimestamp((double) frame/HZ), cycleSize);
-                                        bitType = BitType.BAD;
-                                        dump = 1;
-                                        skipProgram = true;
-                                    } else {
-                                        bitType = BitType.START;
-                                    }
-                                }
-                                if (bitCount == 9) {
-                                    int b = last16Bits & 0xFF;
-                                    bos.write(b);
-                                    if (byteCount < 3 && b != 0xd3) {
-                                        System.out.printf("    Byte %d: 0x%02x\n", byteCount, b);
-                                    }
-                                    byteCount += 1;
-                                    bitCount = 0;
-                                }
-                            } else {
-                                if (last16Bits == 0x557F) {
-                                    double now = (double) frame/HZ;
+                            eatNextSlowSpeedBit = false;
+                            lowSpeedLenientFirstBit = false;
+                        } else {
+                            if (bit) {
+                                eatNextSlowSpeedBit = true;
+                            }
+                            lowSpeedLast16Bits = (lowSpeedLast16Bits << 1) | (bit ? 1 : 0);
+                            if (lowSpeedBitCount == -1) {
+                                // Haven't found end of header yet.
+                                if ((lowSpeedLast16Bits & 0xFF) == 0xA5) {
                                     double leadTime = (double) (frame - searchFrameStart)/HZ;
                                     if (leadTime > 30 || newPrograms.isEmpty()) {
-                                        newPrograms.add(now);
+                                        newPrograms.add(frame);
                                         trackNumber += 1;
                                         copyNumber = 1;
                                     }
-                                    System.out.printf("Found end of header for %d-%d at byte %d, frame %d, %s, lead time %f.\n",
-                                            trackNumber, copyNumber, bs.getByteCount(), frame,
-                                            timeToTimestamp(now), leadTime);
-                                    bs.clear();
+                                    System.out.println("Found end of low-speed header at " + frameToTimestamp(frame));
+                                    lowSpeedBitCount = 0;
+                                    // For some reason we don't get a clock after this last 1.
+                                    lowSpeedLenientFirstBit = true;
                                     inProgram = true;
-                                    bitCount = 1;
-                                    last16Bits = 0;
+                                    speed = Speed.LOW;
+                                }
+                            } else {
+                                lowSpeedBitCount += 1;
+                                if (lowSpeedBitCount == 8) {
+                                    programBytes.write(lowSpeedLast16Bits & 0xFF);
+                                    lowSpeedBitCount = 0;
                                 }
                             }
-
-                            if (previousBitFrame != 0) {
-                                bitHistory.addLast(new BitData(previousBitFrame, frame, bitType));
-                                while (bitHistory.size() > MAX_BIT_HISTORY) {
-                                    bitHistory.removeFirst();
-                                }
-                                if (dump >= 0) {
-                                    if (dump == 0) {
-                                        dumpBitHistory(bitHistory, frames, threshold, "/Users/lk/tmp/out-" + instanceNumber +".png");
-                                    }
-                                    dump -= 1;
-                                }
-                            }
-
-                            previousBitFrame = frame;
-                        } else if (inProgram && byteCount > 0 && cycleSize > 66) {
-                            // 1.5 ms gap, end of recording.
-                            System.out.printf("End of program found at byte %d, frame %d, %s.\n",
-                                    bs.getByteCount(), frame, timeToTimestamp((double) frame/HZ));
-                            endOfProgram = true;
                         }
-
-                        cycleSize = 0;
+                        lastSlowSpeedPulseFrame = frame;
                     }
-                } else {
-                    cycleSize += 1;
                 }
 
-                if (newSign != 0) {
-                    oldSign = newSign;
+                // High speed.
+                if (speed != Speed.LOW) {
+                    int newSign = value > threshold ? 1
+                            : value < -threshold ? -1
+                            : 0;
+
+                    if (oldSign != 0 && newSign != 0 && oldSign != newSign) {
+                        // Zero-crossing.
+                        if (oldSign == -1) {
+                            if (cycleSize < histogram.length) {
+                                histogram[cycleSize] += 1;
+                                max = Math.max(max, cycleSize);
+                            }
+                            if (cycleSize > 7 && cycleSize < 44) {
+                                // Long cycle is "0", short cycle is "1".
+                                boolean bit = cycleSize < 22;
+
+                                BitType bitType = bit ? BitType.ONE : BitType.ZERO;
+
+                                // Bits are MSb to LSb.
+                                if (first) {
+                                    first = false;
+                                } else {
+                                    bs.addBit(bit, frame);
+                                }
+                                last16Bits = ((last16Bits << 1) | (bit ? 1 : 0)) & 0xFFFF;
+                                if (inProgram) {
+                                    bitCount += 1;
+
+                                    if (bitCount == 1) {
+                                        if (((last16Bits & 0x1) != 0 || (instanceNumber == 4 && byteCount == -1)) && !skipProgram) {
+                                            System.out.printf("Bad start bit at byte %d, %s, cycle size %d. ******************\n",
+                                                    byteCount, frameToTimestamp(frame), cycleSize);
+                                            bitType = BitType.BAD;
+                                            dump = 1;
+                                            skipProgram = true;
+                                        } else {
+                                            bitType = BitType.START;
+                                        }
+                                    }
+                                    if (bitCount == 9) {
+                                        int b = last16Bits & 0xFF;
+                                        programBytes.write(b);
+                                        if (byteCount < 3 && b != 0xd3) {
+                                            System.out.printf("    Byte %d: 0x%02x\n", byteCount, b);
+                                        }
+                                        byteCount += 1;
+                                        bitCount = 0;
+                                    }
+                                } else {
+                                    if (last16Bits == 0x557F) {
+                                        double leadTime = (double) (frame - searchFrameStart)/HZ;
+                                        if (leadTime > 30 || newPrograms.isEmpty()) {
+                                            newPrograms.add(frame);
+                                            trackNumber += 1;
+                                            copyNumber = 1;
+                                        }
+                                        System.out.printf("Found end of header for %d-%d at byte %d, %s, lead time %f.\n",
+                                                trackNumber, copyNumber, bs.getByteCount(),
+                                                frameToTimestamp(frame), leadTime);
+                                        bs.clear();
+                                        inProgram = true;
+                                        bitCount = 1;
+                                        last16Bits = 0;
+                                        speed = Speed.HIGH;
+                                    }
+                                }
+
+                                if (previousBitFrame != 0) {
+                                    bitHistory.addLast(new BitData(previousBitFrame, frame, bitType));
+                                    while (bitHistory.size() > MAX_BIT_HISTORY) {
+                                        bitHistory.removeFirst();
+                                    }
+                                    if (dump >= 0) {
+                                        if (dump == 0) {
+                                            dumpBitHistory(bitHistory, frames, threshold, "/Users/lk/tmp/out-" + instanceNumber + ".png");
+                                        }
+                                        dump -= 1;
+                                    }
+                                }
+
+                                previousBitFrame = frame;
+                            } else if (inProgram && byteCount > 0 && cycleSize > 66) {
+                                // 1.5 ms gap, end of recording.
+                                // TODO pull this out of zero crossing.
+                                System.out.printf("End of program found at byte %d, frame %d, %s.\n",
+                                        bs.getByteCount(), frame, frameToTimestamp(frame));
+                                endOfProgram = true;
+                            }
+
+                            cycleSize = 0;
+                        }
+                    } else {
+                        cycleSize += 1;
+                    }
+
+                    if (newSign != 0) {
+                        oldSign = newSign;
+                    }
                 }
             }
 
@@ -244,16 +319,20 @@ public class CassetteReader {
             System.out.printf("Leftover bits: %d\n", bitCount);
 
             if (!skipProgram) {
-                byte[] outputBytes = bos.getBytes();
+                byte[] outputBytes = programBytes.toByteArray();
                 System.out.printf("First three bytes: 0x%02x 0x%02x 0x%02x\n",
                         outputBytes[0], outputBytes[1], outputBytes[2]);
-                OutputStream fos = new FileOutputStream("/Users/lk/tmp/out-" + trackNumber + "-" + copyNumber + ".bin");
-                fos.write(outputBytes);
-                fos.close();
+                OutputStream fos2 = new FileOutputStream("/Users/lk/tmp/out-" + trackNumber + "-" + copyNumber + ".bin");
+                fos2.write(outputBytes);
+                fos2.close();
 
-                short[] audio = generateAudio(outputBytes);
-                writeWavFile(audio, new File("/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes/L-3-" +
-                        trackNumber + "-" + copyNumber + ".wav"));
+                File wavFile = new File(OUTPUT_PREFIX + trackNumber + "-" + copyNumber + ".wav");
+                if (wavFile.exists()) {
+                    System.out.println("Not overwriting " + wavFile);
+                } else {
+                    short[] audio = generateAudio(outputBytes);
+                    writeWavFile(audio, wavFile);
+                }
             }
 
             copyNumber += 1;
@@ -261,11 +340,18 @@ public class CassetteReader {
         }
 
         System.out.println("New programs at:");
-        for (double newProgram : newPrograms) {
-            System.out.println("    " + timeToTimestamp(newProgram));
+        for (int newProgram : newPrograms) {
+            System.out.println("    " + frameToTimestamp(newProgram));
         }
 
+//        writeWavFile(pulseFrames, new File(CASS_DIR + "/pulse.wav"));
+
         /*
+        System.out.println("frames [domain]\tcount");
+        for (int i = 0; i < lowSpeedHistogram.length; i++) {
+            System.out.printf("%d %d\n", i, lowSpeedHistogram[i]);
+        }
+
 
         bs = bs.deleteBits(8, 9);
 
@@ -389,7 +475,7 @@ public class CassetteReader {
     }
 
     private static void writeWavFile(short[] samples, File file) throws IOException {
-        System.out.printf("Writing %s, %d samples\n", file, samples.length);
+        System.out.printf("Writing %s, %,d samples\n", file, samples.length);
 
         // Generate byte array.
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
@@ -500,7 +586,9 @@ public class CassetteReader {
         return out;
     }
 
-    private static String timeToTimestamp(double time) {
+    private static String frameToTimestamp(int frame) {
+        double time = (double) frame/HZ;
+
         long ms = (long) (time*1000);
         long sec = ms/1000;
         ms -= sec*1000;
@@ -509,7 +597,11 @@ public class CassetteReader {
         long hour = min/60;
         min -= hour*60;
 
-        return String.format("%d:%02d:%02d.%03d", hour, min, sec, ms);
+        return String.format("%d:%02d:%02d.%03d (frame %,d)", hour, min, sec, ms, frame);
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.min(Math.max(value, min), max);
     }
 }
 // 1ms pause at 11.920
