@@ -59,9 +59,10 @@ public class CassetteReader {
         System.out.println("Performing high-pass filter.");
         samples = highPassFilter(samples, 50);
 
+
         if (false) {
             // Dump filtered data.
-            writeWavFile(samples, new File("/Users/lk/tmp/out.wav"));
+            writeWavFile(samples, new File("/Users/lk/tmp/filtered.wav"));
         }
 
         if (false) {
@@ -188,74 +189,11 @@ public class CassetteReader {
         for (int newProgram : newPrograms) {
             System.out.println("    " + frameToTimestamp(newProgram));
         }
-
-        /*
-        System.out.println("frames [domain]\tcount");
-        for (int i = 0; i < lowSpeedHistogram.length; i++) {
-            System.out.printf("%d %d\n", i, lowSpeedHistogram[i]);
-        }
-
-
-        bs = bs.deleteBits(8, 9);
-
-        byte[] outputBytes = bs.toByteArray();
-
-        System.out.printf("First three bytes: 0x%02x 0x%02x 0x%02x\n",
-                outputBytes[0], outputBytes[1], outputBytes[2]);
-
-        int firstByte = 0;
-        for (int i = 0; i < outputBytes.length; i++) {
-            if (outputBytes[i] == (byte) 0xD3) {
-                firstByte = i;
-                break;
-            }
-        }
-        System.out.println("First byte: " + firstByte + " of " + outputBytes.length);
-
-        // Find places where the header changes.
-        if (false) {
-            int counter = 0;
-            for (int i = 0; i < firstByte; i++) {
-                if (outputBytes[i] != outputBytes[i + 1] &&
-                        (outputBytes[i] == 0x55 || outputBytes[i] == (byte) 0xAA ||
-                                outputBytes[i + 1] == 0x55 || outputBytes[i + 1] == (byte) 0xAA)) {
-
-                    System.out.printf("-------------------- 0x%02x 0x%02x at %d\n",
-                            outputBytes[i], outputBytes[i + 1], i);
-                    for (int j = i*8; j < i*8 + 16; j++) {
-                        int frameNumber = bs.getExtra(j);
-                        System.out.printf("    %d   %.4f\n",
-                                bs.getBit(j) ? 1 : 0,
-                                (double) frameNumber/HZ);
-                    }
-                    int firstFrame = bs.getExtra(i*8);
-                    int lastFrame = bs.getExtra(i*8 + 16);
-
-                    PrintWriter w = new PrintWriter("/Users/lk/tmp/out-" + counter++ + ".txt");
-                    w.printf("Time [domain]\tAudio\n");
-                    for (int frame = firstFrame; frame < lastFrame; frame++) {
-                        w.printf("%f %d\n", (double) frame/HZ, frames[frame]);
-                    }
-                    w.close();
-                }
-            }
-
-            bs = bs.deleteBits(firstByte*8 + 8, 9);
-            outputBytes = bs.toByteArray();
-        }
-
-        // Generate output file.
-        OutputStream fos = new FileOutputStream("/Users/lk/tmp/out.bin");
-        fos.write(outputBytes);
-        fos.close();
-
-        System.out.println("count [domain]\tpositive\tnegative\tcycle");
-        for (int i = 0; i <= max; i++) {
-            System.out.printf("%d %d %d %d\n", i, positiveHistogram[i], negativeHistogram[i], histogram[i]);
-        }
-        */
     }
 
+    /**
+     * Read a WAV file as an array of samples.
+     */
     private static short[] readWavFile(File file) throws UnsupportedAudioFileException, IOException {
         System.out.println("Reading " + file);
         AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(file);
@@ -305,6 +243,9 @@ public class CassetteReader {
         return samples;
     }
 
+    /**
+     * Writes the samples to a 16-bit mono little-endian WAV file.
+     */
     private static void writeWavFile(short[] samples, File file) throws IOException {
         System.out.printf("Writing %s, %,d samples\n", file, samples.length);
 
@@ -403,6 +344,9 @@ public class CassetteReader {
         ImageUtils.save(image, pathname);
     }
 
+    /**
+     * Simple high-pass filter.
+     */
     private static short[] highPassFilter(short[] samples, int size) {
         short[] out = new short[samples.length];
         long sum = 0;
@@ -412,12 +356,17 @@ public class CassetteReader {
             if (i >= size) {
                 sum -= samples[i - size];
             }
+
+            // Subtract out the average of the last "size" samples (to estimate local DC component).
             out[i] = (short) (samples[i] - sum/size);
         }
 
         return out;
     }
 
+    /**
+     * Generate a string version of the frame index.
+     */
     public static String frameToTimestamp(int frame) {
         double time = (double) frame/HZ;
 
@@ -431,12 +380,4 @@ public class CassetteReader {
 
         return String.format("%d:%02d:%02d.%03d (frame %,d)", hour, min, sec, ms, frame);
     }
-
-    public static int clamp(int value, int min, int max) {
-        return Math.min(Math.max(value, min), max);
-    }
 }
-// 1ms pause at 11.920
-// Long cycle is "0", short cycle is "1".
-// Chose long for zero, but there are many more zeros than ones.
-// Baud is odd term since symbols take different amounts of time.
