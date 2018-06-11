@@ -22,8 +22,8 @@ import java.util.List;
 public class CassetteReader {
     public static final int HZ = 44100;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
-    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/L-3-";
+    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-3-";
 //    private static final String INPUT_PATHNAME = CASS_DIR + "/L-low.wav";
 //    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-2-";
 

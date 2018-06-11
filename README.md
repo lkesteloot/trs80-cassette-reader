@@ -4,6 +4,8 @@ high-speed (1500 baud) TRS-80 Model I and Model III cassettes
 and generates a clean high-speed version that can be
 read by an [emulator](https://github.com/lkesteloot/trs80).
 
+![Tape](images/tape.jpg)
+
 The WAV file must be mono, 44.1 kHz, little-endian, and 16 bits per
 sample.
 
