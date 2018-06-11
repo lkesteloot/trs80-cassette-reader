@@ -7,6 +7,7 @@ import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
@@ -54,60 +55,20 @@ public class CassetteReader {
     }
 
     public static void main(String[] args) throws Exception {
-        File file = new File(INPUT_PATHNAME);
-        System.out.println("Reading " + file);
-        AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(file);
-        AudioFormat format = audioInputStream.getFormat();
-        System.out.println(format);
-        if (format.isBigEndian()) {
-            throw new IllegalStateException("File must be little endian");
-        }
-        if (format.getChannels() != 1) {
-            throw new IllegalStateException("File must be mono");
-        }
-        if (format.getSampleSizeInBits() != 16) {
-            throw new IllegalStateException("File must be 16-bit audio");
-        }
-        if (format.getEncoding() != AudioFormat.Encoding.PCM_SIGNED) {
-            throw new IllegalStateException("File must be PCM_SIGNED");
-        }
-        if (format.getFrameRate() != HZ || format.getSampleRate() != HZ) {
-            throw new IllegalStateException("File must be " + HZ + " Hz");
-        }
-        if (format.getFrameSize() != 2) {
-            throw new IllegalStateException("File must be 2 bytes per frame");
-        }
-
-        // Read entire file as bytes.
-        int sampleCount = (int) audioInputStream.getFrameLength();
-        int byteCount = sampleCount*format.getFrameSize();
-        byte[] bytes = new byte[byteCount];
-        int bytesRead = audioInputStream.read(bytes);
-        if (bytesRead != byteCount) {
-            throw new IllegalStateException("Wanted to read " + byteCount + " but read " + bytesRead);
-        }
-
-        // Convert to samples. Samples are little-endian.
-        System.out.println("Converting to samples.");
-        short[] samples = new short[sampleCount];
-        int byteIndex = 0;
-        int maxValue = 0;
-        for (int frame = 0; frame < sampleCount; frame++, byteIndex += 2) {
-            // Java bytes are signed. They sign-extend when converted to int, which is what
-            // you want for the MSB but not the LSB.
-            int value = ((int) bytes[byteIndex + 1] << 8) | ((int) bytes[byteIndex] & 0xFF);
-            samples[frame] = (short) value;
-            maxValue = Math.max(maxValue, value);
-        }
+        short[] samples = readWavFile(new File(INPUT_PATHNAME));
 
         System.out.println("Performing high-pass filter.");
         samples = highPassFilter(samples, 50);
-//        writeWavFile(frames, new File("/Users/lk/tmp/out.wav"));
 
-        // For debugging the low speed decoder.
         if (false) {
-            short[] pulseFrames = new short[sampleCount];
-            for (int i = 0; i < sampleCount; i++) {
+            // Dump filtered data.
+            writeWavFile(samples, new File("/Users/lk/tmp/out.wav"));
+        }
+
+        if (false) {
+            // For debugging the low speed decoder.
+            short[] pulseFrames = new short[samples.length];
+            for (int i = 0; i < samples.length; i++) {
                 pulseFrames[i] = (short) (i >= 7 ? samples[i - 7] - samples[i] : 0);
             }
             writeWavFile(pulseFrames, new File(CASS_DIR + "/pulse.wav"));
@@ -118,7 +79,7 @@ public class CassetteReader {
         int copyNumber = 1;
         int frame = 0;
         List<Integer> newPrograms = new ArrayList<>();
-        while (frame < sampleCount) {
+        while (frame < samples.length) {
             System.out.println("--------------------------------------- " + instanceNumber);
 
             // Start out trying all decoders.
@@ -129,7 +90,7 @@ public class CassetteReader {
 
             int searchFrameStart = frame;
             TapeDecoderState state = TapeDecoderState.UNDECIDED;
-            for (; frame < sampleCount && (state == TapeDecoderState.UNDECIDED || state == TapeDecoderState.DETECTED); frame++) {
+            for (; frame < samples.length && (state == TapeDecoderState.UNDECIDED || state == TapeDecoderState.DETECTED); frame++) {
                 // Give the sample to all decoders in parallel.
                 int detectedIndex = -1;
                 for (int i = 0; i < tapeDecoders.length; i++) {
@@ -296,46 +257,103 @@ public class CassetteReader {
         */
     }
 
+    private static short[] readWavFile(File file) throws UnsupportedAudioFileException, IOException {
+        System.out.println("Reading " + file);
+        AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(file);
+        AudioFormat format = audioInputStream.getFormat();
+        System.out.println(format);
+        if (format.isBigEndian()) {
+            throw new IllegalStateException("File must be little endian");
+        }
+        if (format.getChannels() != 1) {
+            throw new IllegalStateException("File must be mono");
+        }
+        if (format.getSampleSizeInBits() != 16) {
+            throw new IllegalStateException("File must be 16-bit audio");
+        }
+        if (format.getEncoding() != AudioFormat.Encoding.PCM_SIGNED) {
+            throw new IllegalStateException("File must be PCM_SIGNED");
+        }
+        if (format.getFrameRate() != HZ || format.getSampleRate() != HZ) {
+            throw new IllegalStateException("File must be " + HZ + " Hz");
+        }
+        if (format.getFrameSize() != 2) {
+            throw new IllegalStateException("File must be 2 bytes per frame");
+        }
+
+        // Read entire file as bytes.
+        int sampleCount = (int) audioInputStream.getFrameLength();
+        int byteCount = sampleCount*format.getFrameSize();
+        byte[] bytes = new byte[byteCount];
+        int bytesRead = audioInputStream.read(bytes);
+        if (bytesRead != byteCount) {
+            throw new IllegalStateException("Wanted to read " + byteCount + " but read " + bytesRead);
+        }
+
+        // Convert to samples. Samples are little-endian.
+        System.out.println("Converting to samples.");
+        short[] samples = new short[sampleCount];
+        int byteIndex = 0;
+        int maxValue = 0;
+        for (int frame = 0; frame < sampleCount; frame++, byteIndex += 2) {
+            // Java bytes are signed. They sign-extend when converted to int, which is what
+            // you want for the MSB but not the LSB.
+            int value = ((int) bytes[byteIndex + 1] << 8) | ((int) bytes[byteIndex] & 0xFF);
+            samples[frame] = (short) value;
+            maxValue = Math.max(maxValue, value);
+        }
+
+        return samples;
+    }
+
     private static short[] generateAudio(byte[] program) {
-        List<short[]> samples = new ArrayList<>();
+        List<short[]> samplesList = new ArrayList<>();
 
         // Generate bit patterns.
         short[] zero = generateCycle(32);
         short[] one = generateCycle(15);
 
         // Start with half a second of silence.
-        samples.add(new short[HZ/2]);
+        samplesList.add(new short[HZ/2]);
 
         // Half a second of 0x55.
         int cycles = 0;
         while (cycles < HZ/2) {
-            cycles += addByte(samples, 0x55, zero, one);
+            cycles += addByte(samplesList, 0x55, zero, one);
         }
-        addByte(samples, 0x7F, zero, one);
+        addByte(samplesList, 0x7F, zero, one);
 
         // Write program.
         for (byte b : program) {
             // Start bit.
-            samples.add(zero);
-            addByte(samples, b, zero, one);
+            samplesList.add(zero);
+            addByte(samplesList, b, zero, one);
         }
 
         // End with half a second of silence.
-        samples.add(new short[HZ]);
+        samplesList.add(new short[HZ]);
 
-        return Shorts.concat(samples.toArray(new short[0][]));
+        return Shorts.concat(samplesList.toArray(new short[0][]));
     }
 
-    private static int addByte(List<short[]> samples, int b, short[] zero, short[] one) {
+    /**
+     * Adds the byte "b" to the samples list, most significant bit first.
+     * @param samplesList list of samples we're adding to.
+     * @param b byte to generate.
+     * @param zero samples representing a zero bit.
+     * @param one samples representing a one bit.
+     * @return the number of samples added.
+     */
+    private static int addByte(List<short[]> samplesList, int b, short[] zero, short[] one) {
         int sampleCount = 0;
 
         // MSb first.
         for (int i = 7; i >= 0; i--) {
             if ((b & (1 << i)) != 0) {
-                samples.add(one);
+                samplesList.add(one);
                 sampleCount += one.length;
             } else {
-                samples.add(zero);
+                samplesList.add(zero);
                 sampleCount += zero.length;
             }
         }
