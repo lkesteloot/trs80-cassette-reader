@@ -175,7 +175,7 @@ public class CassetteReader {
                     if (wavFile.exists()) {
                         System.out.println("Not overwriting " + wavFile);
                     } else {
-                        short[] audio = HighSpeedEncoder.encode(outputBytes);
+                        short[] audio = HighSpeedTapeEncoder.encode(outputBytes);
                         writeWavFile(audio, wavFile);
                     }
                     break;

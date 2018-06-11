@@ -5,7 +5,7 @@ import com.google.common.primitives.Shorts;
 import java.util.ArrayList;
 import java.util.List;
 
-public class HighSpeedEncoder {
+public class HighSpeedTapeEncoder {
     /**
      * Samples representing a zero bit.
      */
