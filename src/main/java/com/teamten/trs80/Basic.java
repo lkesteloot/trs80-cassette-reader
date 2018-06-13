@@ -66,8 +66,6 @@ public class Basic {
         PrintWriter out = new PrintWriter(stringWriter);
         ByteArrayInputStream b = new ByteArrayInputStream(bytes);
         State state;
-        int ch;
-        int ch2;
 
         if (b.read() != 0xD3 || b.read() != 0xD3 || b.read() != 0xD3) {
             System.out.println("Basic: missing magic -- not a BASIC file.");
@@ -78,24 +76,29 @@ public class Basic {
         b.read();
 
         while (true) {
-            // Read the address.
-            if ((ch = b.read()) == EOF || (ch2 = b.read()) == EOF) {
-                System.out.println("Basic: EOF in next line number");
+            // Read the address of the next line. We ignore this (as does Basic when
+            // loading programs), only using it to detect end of program. (In the real
+            // Basic these are regenerated after loading.)
+            int address = readShort(b);
+            if (address == EOF) {
+                System.out.println("Basic: EOF in next line's address");
                 return null;
             }
             // Zero address indicates end of program.
-            if (ch2 == 0 && ch == 0) {
+            if (address == 0) {
                 break;
             }
 
             // Read current line number.
-            if ((ch = b.read()) == EOF || (ch2 = b.read()) == EOF) {
+            int lineNumber = readShort(b);
+            if (lineNumber == EOF) {
                 System.out.println("Basic: EOF in line number");
                 return null;
             }
-            out.printf("%d ", ch + ch2*256);
+            out.printf("%d ", lineNumber);
 
             // Read rest of line.
+            int ch;
             state = State.NORMAL;
             while ((ch = b.read()) != EOF && ch != 0) {
                 if (ch == ':' && state == State.NORMAL) {
@@ -154,22 +157,42 @@ public class Basic {
                     }
                 }
             }
-
-            if (state == State.COLON || state == State.COLON_REM) {
-                out.print(':');
-                if (state == State.COLON_REM)
-                    out.print("REM");
-                state = State.NORMAL;
-            }
-
-            out.println();
             if (ch == EOF) {
                 System.out.println("Basic: EOF in line");
                 return null;
             }
+
+            // Deal with eaten tokens.
+            if (state == State.COLON || state == State.COLON_REM) {
+                out.print(':');
+                if (state == State.COLON_REM)
+                    out.print("REM");
+                /// state = State.NORMAL;
+            }
+
+            out.println();
         }
 
         return stringWriter.toString();
+    }
+
+    /**
+     * Reads a little-endian short (two-byte) integer.
+     *
+     * @return the integer, or EOF on end of file.
+     */
+    private static int readShort(ByteArrayInputStream is) {
+        int low = is.read();
+        if (low == EOF) {
+            return EOF;
+        }
+
+        int high = is.read();
+        if (high == EOF) {
+            return EOF;
+        }
+
+        return low + high*256;
     }
 
     public static void main(String[] args) throws IOException {

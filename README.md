@@ -6,8 +6,11 @@ read by an [emulator](https://github.com/lkesteloot/trs80).
 
 ![Tape](images/tape.jpg)
 
-The WAV file must be mono, 44.1 kHz, little-endian, and 16 bits per
-sample.
+The WAV file must be mono, 44.1 kHz, little-endian, and 16 bits per sample. The
+input is a single WAV file for the entire cassette (both sides). The output is
+a sequence of files, three for each recording on the cassette: a generated
+high-speed WAV file (`.wav`); a binary file containing the raw bits (`.bin`);
+and a text program containing the decoded Basic program (`.bas`).
 
 # Filename convention
 
