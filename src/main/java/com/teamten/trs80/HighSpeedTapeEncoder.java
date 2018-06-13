@@ -38,6 +38,20 @@ public class HighSpeedTapeEncoder {
             addByte(samplesList, b);
         }
 
+        if (false) {
+            // TODO Do this better.
+            short[] audio = new short[16];
+
+            for (int i = 0; i < 16; i++) {
+                double t = 2*Math.PI*i/32;
+                double value = Math.sin(t);
+                // -0.5 to 0.5, matches recorded audio.
+                short shortValue = (short) (value * 16384);
+                audio[i] = shortValue;
+            }
+            samplesList.add(audio);
+        }
+
         // End with half a second of silence.
         samplesList.add(new short[CassetteReader.HZ/2]);
 

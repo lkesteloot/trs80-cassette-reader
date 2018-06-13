@@ -1,5 +1,7 @@
 package com.teamten.trs80;
 
+import com.google.common.base.Charsets;
+import com.google.common.io.Files;
 import com.teamten.image.ImageUtils;
 
 import javax.sound.sampled.AudioFileFormat;
@@ -22,10 +24,10 @@ import java.util.List;
 public class CassetteReader {
     public static final int HZ = 44100;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
-    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-3-";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/L-low.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-2-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-4-";
+    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/L-4-";
 
     enum BitType { ZERO, ONE, START, BAD }
 
@@ -165,13 +167,26 @@ public class CassetteReader {
                     // Highlight non-programs in pathname.
                     String suffix = isProgram ? "" : "-binary";
 
+
+
                     // Binary dump.
-                    OutputStream fos2 = new FileOutputStream("/Users/lk/tmp/out-" + trackNumber + "-" + copyNumber + suffix + ".bin");
-                    fos2.write(outputBytes);
-                    fos2.close();
+                    String basePathname = OUTPUT_PREFIX + trackNumber + "-" + copyNumber + suffix;
+                    OutputStream fos = new FileOutputStream(basePathname + ".bin");
+                    fos.write(outputBytes);
+                    fos.close();
+
+                    // Basic dump.
+                    if (isProgram) {
+                        String basicProgram = Basic.fromTokenized(outputBytes);
+                        if (basicProgram == null) {
+                            System.out.println("Error: Cannot parse Basic program");
+                        } else {
+                            Files.asCharSink(new File(basePathname + ".bas"), Charsets.UTF_8).write(basicProgram);
+                        }
+                    }
 
                     // WAV dump.
-                    File wavFile = new File(OUTPUT_PREFIX + trackNumber + "-" + copyNumber + suffix + ".wav");
+                    File wavFile = new File(basePathname + ".wav");
                     if (wavFile.exists()) {
                         System.out.println("Not overwriting " + wavFile);
                     } else {
