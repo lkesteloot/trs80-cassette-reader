@@ -72,17 +72,18 @@ public class Basic {
             return null;
         }
 
-        // I don't know what this byte is. It's typically 0x41 (A), 0x44 (D), or 0x4C (L).
+        // One-byte ASCII program name.
         b.read();
 
         while (true) {
             // Read the address of the next line. We ignore this (as does Basic when
             // loading programs), only using it to detect end of program. (In the real
             // Basic these are regenerated after loading.)
-            int address = readShort(b);
+            int address = readShort(b, true);
             if (address == EOF) {
                 System.out.println("Basic: EOF in next line's address");
-                return null;
+                out.println("[EOF in next line's address]");
+                break;
             }
             // Zero address indicates end of program.
             if (address == 0) {
@@ -90,10 +91,11 @@ public class Basic {
             }
 
             // Read current line number.
-            int lineNumber = readShort(b);
+            int lineNumber = readShort(b, false);
             if (lineNumber == EOF) {
                 System.out.println("Basic: EOF in line number");
-                return null;
+                out.println("[EOF in line number]");
+                break;
             }
             out.printf("%d ", lineNumber);
 
@@ -159,7 +161,8 @@ public class Basic {
             }
             if (ch == EOF) {
                 System.out.println("Basic: EOF in line");
-                return null;
+                out.println("[EOF in line]");
+                break;
             }
 
             // Deal with eaten tokens.
@@ -181,7 +184,7 @@ public class Basic {
      *
      * @return the integer, or EOF on end of file.
      */
-    private static int readShort(ByteArrayInputStream is) {
+    private static int readShort(ByteArrayInputStream is, boolean allowEofAfterFirstByte) {
         int low = is.read();
         if (low == EOF) {
             return EOF;
@@ -189,7 +192,7 @@ public class Basic {
 
         int high = is.read();
         if (high == EOF) {
-            return EOF;
+            return allowEofAfterFirstByte ? low : EOF;
         }
 
         return low + high*256;

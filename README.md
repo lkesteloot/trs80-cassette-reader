@@ -40,7 +40,7 @@ You can leave off `TRACK` or `COPY` from the end to mean "all". For example:
   copies of the same program.
 * `L-2-3-1` is the first copy of that track.
 
-The program treats two recordings that are more than 30 seconds apart as different
+The program treats two recordings that are more than 10 seconds apart as different
 tracks.
 
 # 500 baud (low-speed) encoding

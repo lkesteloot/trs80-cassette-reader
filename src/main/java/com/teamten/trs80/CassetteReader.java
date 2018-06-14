@@ -18,16 +18,22 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
 public class CassetteReader {
     public static final int HZ = 44100;
+    private static final boolean FORCE = true;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-4-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-8-";
     private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/L-4-";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/tmp-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-5-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-7-";
 
     enum BitType { ZERO, ONE, START, BAD }
 
@@ -113,7 +119,7 @@ public class CassetteReader {
 
                         // See how long it took to find it. A large gap means a new track.
                         double leadTime = (double) (frame - searchFrameStart)/HZ;
-                        if (leadTime > 30 || newPrograms.isEmpty()) {
+                        if (leadTime > 10 || newPrograms.isEmpty()) {
                             newPrograms.add(frame);
                             trackNumber += 1;
                             copyNumber = 1;
@@ -152,22 +158,23 @@ public class CassetteReader {
                     TapeDecoder tapeDecoder = tapeDecoders[0];
                     byte[] outputBytes = tapeDecoder.getProgram();
 
-                    System.out.printf("First few bytes (of %,d):", outputBytes.length);
-                    for (int i = 0; i < outputBytes.length && i < 3; i++) {
-                        System.out.printf(" 0x%02X", outputBytes[i]);
-                    }
-                    System.out.println();
-
                     // Detect Basic program.
                     boolean isProgram = outputBytes.length >= 3 &&
                             outputBytes[0] == (byte) 0xD3 &&
                             outputBytes[1] == (byte) 0xD3 &&
                             outputBytes[2] == (byte) 0xD3;
 
+                    // Dump non-Basic header.
+                    if (!isProgram) {
+                        System.out.printf("First few bytes (of %,d):", outputBytes.length);
+                        for (int i = 0; i < outputBytes.length && i < 3; i++) {
+                            System.out.printf(" 0x%02X", outputBytes[i]);
+                        }
+                        System.out.println();
+                    }
+
                     // Highlight non-programs in pathname.
                     String suffix = isProgram ? "" : "-binary";
-
-
 
                     // Binary dump.
                     String basePathname = OUTPUT_PREFIX + trackNumber + "-" + copyNumber + suffix;
@@ -187,10 +194,22 @@ public class CassetteReader {
 
                     // WAV dump.
                     File wavFile = new File(basePathname + ".wav");
-                    if (wavFile.exists()) {
+                    if (wavFile.exists() && !FORCE) {
                         System.out.println("Not overwriting " + wavFile);
                     } else {
-                        short[] audio = HighSpeedTapeEncoder.encode(outputBytes);
+                        // Low-speed programs end in two 0x00, but high-speed programs
+                        // end in three 0x00. Add the additional 0x00 since we're
+                        // saving high-speed.
+                        byte[] highSpeedBytes = outputBytes;
+                        if (highSpeedBytes.length >= 3 &&
+                                highSpeedBytes[highSpeedBytes.length - 1] == (byte) 0x00 &&
+                                highSpeedBytes[highSpeedBytes.length - 2] == (byte) 0x00 &&
+                                highSpeedBytes[highSpeedBytes.length - 3] != (byte) 0x00) {
+
+                            highSpeedBytes = Arrays.copyOf(highSpeedBytes, highSpeedBytes.length + 1);
+                            highSpeedBytes[highSpeedBytes.length - 1] = 0x00;
+                        }
+                        short[] audio = HighSpeedTapeEncoder.encode(highSpeedBytes);
                         writeWavFile(audio, wavFile);
                     }
                     break;

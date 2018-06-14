@@ -7,13 +7,33 @@ import java.util.List;
 
 public class HighSpeedTapeEncoder {
     /**
+     * Length of a zero bit, in samples.
+     */
+    private static final int ZERO_LENGTH = 32;
+    /**
+     * Length of a one bit, in samples.
+     */
+    private static final int ONE_LENGTH = 15;
+    /**
      * Samples representing a zero bit.
      */
-    private static final short[] ZERO = generateCycle(32);
+    private static final short[] ZERO = generateCycle(ZERO_LENGTH);
     /**
      * Samples representing a one bit.
      */
-    private static final short[] ONE = generateCycle(15);
+    private static final short[] ONE = generateCycle(ONE_LENGTH);
+    /**
+     * Samples representing a long zero bit. This is the first start bit
+     * after the end of the header. It's 1 ms longer than a regular zero.
+     */
+    private static final short[] LONG_ZERO = generateCycle(ZERO_LENGTH + CassetteReader.HZ/1000);
+    /**
+     * The final cycle in the entire waveform, which is necessary
+     * to force that last negative-to-positive transition (and interrupt).
+     * We could just use a simple half cycle here, but it's nicer to do
+     * something like the original analog.
+     */
+    private static final short[] FINAL_HALF_CYCLE = generateFinalHalfCycle(ZERO_LENGTH*3, ZERO);
 
     /**
      * Encode the sequence of bytes as an array of audio samples.
@@ -24,37 +44,32 @@ public class HighSpeedTapeEncoder {
         // Start with half a second of silence.
         samplesList.add(new short[CassetteReader.HZ/2]);
 
-        // Half a second of 0x55.
-        int cycles = 0;
-        while (cycles < CassetteReader.HZ/2) {
-            cycles += addByte(samplesList, 0x55);
+        // Header of 0x55.
+        for (int i = 0; i < 256; i++) {
+            addByte(samplesList, 0x55);
         }
         addByte(samplesList, 0x7F);
 
         // Write program.
+        boolean firstStartBit = true;
         for (byte b : bytes) {
             // Start bit.
-            samplesList.add(ZERO);
+            if (firstStartBit) {
+                samplesList.add(LONG_ZERO);
+                firstStartBit = false;
+            } else {
+                samplesList.add(ZERO);
+            }
             addByte(samplesList, b);
         }
 
-        if (false) {
-            // TODO Do this better.
-            short[] audio = new short[16];
-
-            for (int i = 0; i < 16; i++) {
-                double t = 2*Math.PI*i/32;
-                double value = Math.sin(t);
-                // -0.5 to 0.5, matches recorded audio.
-                short shortValue = (short) (value * 16384);
-                audio[i] = shortValue;
-            }
-            samplesList.add(audio);
-        }
+        // Finish off the last cycle, so that it generates an interrupt.
+        samplesList.add(FINAL_HALF_CYCLE);
 
         // End with half a second of silence.
         samplesList.add(new short[CassetteReader.HZ/2]);
 
+        // Concatenate all samples.
         return Shorts.concat(samplesList.toArray(new short[0][]));
     }
 
@@ -62,23 +77,16 @@ public class HighSpeedTapeEncoder {
      * Adds the byte "b" to the samples list, most significant bit first.
      * @param samplesList list of samples we're adding to.
      * @param b byte to generate.
-     * @return the number of samples added.
      */
-    private static int addByte(List<short[]> samplesList, int b) {
-        int sampleCount = 0;
-
+    private static void addByte(List<short[]> samplesList, int b) {
         // MSb first.
         for (int i = 7; i >= 0; i--) {
             if ((b & (1 << i)) != 0) {
                 samplesList.add(ONE);
-                sampleCount += ONE.length;
             } else {
                 samplesList.add(ZERO);
-                sampleCount += ZERO.length;
             }
         }
-
-        return sampleCount;
     }
 
     /**
@@ -95,6 +103,66 @@ public class HighSpeedTapeEncoder {
             // -0.5 to 0.5, matches recorded audio.
             short shortValue = (short) (value * 16384);
             audio[i] = shortValue;
+        }
+
+        return audio;
+    }
+
+    /**
+     * Generate a half cycle that fades off to zero instead of coming down hard to zero.
+     *
+     * @param zero the previous cycle, so we copy the ending slope.
+     */
+    private static short[] generateFinalHalfCycle(int length, short[] zero) {
+        // Copy the slope of the end of the zero bit.
+        int slope = zero[zero.length - 1] - zero[zero.length - 2];
+
+        // Points on the Bezier.
+        int x1 = 0;
+        int y1 = 0;
+        int y2 = Short.MAX_VALUE;
+        int x2 = (y2 - y1 + x1*slope)/slope;
+        int x3 = length/2;
+        int y3 = 0;
+        int x4 = length - 1;
+        int y4 = 0;
+
+        // Generated audio;
+        short[] audio = new short[length];
+
+        // Go through Bezier in small steps.
+        int position = 0;
+        for (int i = 0; i <= 128; i++) {
+            double t = i/128.0;
+
+            // Compute Bezier value.
+            double x12 = x1 + (x2 - x1)*t;
+            double y12 = y1 + (y2 - y1)*t;
+            double x23 = x2 + (x3 - x2)*t;
+            double y23 = y2 + (y3 - y2)*t;
+            double x34 = x3 + (x4 - x3)*t;
+            double y34 = y3 + (y4 - y3)*t;
+
+            double x123 = x12 + (x23 - x12)*t;
+            double y123 = y12 + (y23 - y12)*t;
+            double x234 = x23 + (x34 - x23)*t;
+            double y234 = y23 + (y34 - y23)*t;
+
+            double x1234 = x123 + (x234 - x123)*t;
+            double y1234 = y123 + (y234 - y123)*t;
+
+            // Draw a crude horizontal line from the previous point.
+            int newPosition = Math.min((int) x1234, length - 1);
+            while (position <= newPosition) {
+                audio[position] = (short) y1234;
+                position += 1;
+            }
+        }
+
+        // Finish up anything left.
+        while (position <= length - 1) {
+            audio[position] = 0;
+            position += 1;
         }
 
         return audio;
