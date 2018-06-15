@@ -27,7 +27,7 @@ public class CassetteReader {
     private static final boolean FORCE = true;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
     private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-8-";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-3-";
 //    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
 //    private static final String OUTPUT_PREFIX = CASS_DIR + "/tmp-";
 //    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";

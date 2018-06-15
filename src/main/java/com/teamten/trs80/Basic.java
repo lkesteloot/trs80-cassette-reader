@@ -103,8 +103,13 @@ public class Basic {
             int ch;
             state = State.NORMAL;
             while ((ch = b.read()) != EOF && ch != 0) {
+                // Detect the ":REM'" sequence (colon, REM, single quote), because
+                // that translates to a single quote. Must be a backward-compatible
+                // way to add a single quote as a comment.
                 if (ch == ':' && state == State.NORMAL) {
                     state = State.COLON;
+                } else if (ch == ':' && state == State.COLON) {
+                    out.print(':');
                 } else if (ch == REM && state == State.COLON) {
                     state = State.COLON_REM;
                 } else if (ch == REMQUOT && state == State.COLON_REM) {
@@ -118,8 +123,10 @@ public class Basic {
                         out.print(':');
                         if (state == State.COLON_REM) {
                             out.print("REM");
+                            state = State.RAW;
+                        } else {
+                            state = State.NORMAL;
                         }
-                        state = State.NORMAL;
                     }
 
                     switch (state) {
