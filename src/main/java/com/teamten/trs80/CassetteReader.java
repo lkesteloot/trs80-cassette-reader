@@ -26,10 +26,10 @@ public class CassetteReader {
     public static final int HZ = 44100;
     private static final boolean FORCE = true;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-8-";
-    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/tmp-";
+    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-8-";
+//    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
+//    private static final String OUTPUT_PREFIX = CASS_DIR + "/tmp-";
 //    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";
 //    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-5-";
 //    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
@@ -77,7 +77,8 @@ public class CassetteReader {
             // For debugging the low speed decoder.
             short[] pulseFrames = new short[samples.length];
             for (int i = 0; i < samples.length; i++) {
-                pulseFrames[i] = (short) (i >= 7 ? samples[i - 7] - samples[i] : 0);
+                int diff = i >= 7 ? samples[i - 7] - samples[i] : 0;
+                pulseFrames[i] = (short) Math.max(Math.min(diff, Short.MAX_VALUE), Short.MIN_VALUE);
             }
             writeWavFile(pulseFrames, new File(CASS_DIR + "/pulse.wav"));
         }

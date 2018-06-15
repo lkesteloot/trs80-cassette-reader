@@ -27,13 +27,6 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
      * sure this is a low speed program.
      */
     private static final int MIN_HEADER_ZEROS = 6;
-    /**
-     * Value of differentiated sample that indicates a pulse. Had to go down to
-     * 2000 for the low-speed binary strings in L tape. Perhaps this should
-     * be time-adaptable, since it seems to change a lot over the length of
-     * a tape.
-     */
-    private static final int PULSE_THRESHOLD = 2000;
     private TapeDecoderState mState = TapeDecoderState.UNDECIDED;
     private ByteArrayOutputStream mProgramBytes = new ByteArrayOutputStream();
     /**
@@ -45,6 +38,10 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
     private int mRecentBits = 0;
     private boolean mLenientFirstBit = false;
     private int mDetectedZeros = 0;
+    /**
+     * Height of the previous pulse. We set each pulse's threshold to 1/3 of the previous pulse's height.
+     */
+    private int mPulseHeight = 0;
 
     @Override
     public String getName() {
@@ -59,7 +56,12 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
         int pulse = frame >= PULSE_PEAK_DISTANCE ? samples[frame - PULSE_PEAK_DISTANCE] - samples[frame] : 0;
 
         int timeDiff = frame - mLastPulseFrame;
-        boolean pulsing = pulse >= PULSE_THRESHOLD && timeDiff > PULSE_WIDTH;
+        boolean pulsing = timeDiff > PULSE_WIDTH && pulse >= mPulseHeight/3;
+
+        // Keep track of the height of this pulse, to calibrate for the next one.
+        if (timeDiff < PULSE_WIDTH) {
+            mPulseHeight = Math.max(mPulseHeight, pulse);
+        }
 
         if (mState == TapeDecoderState.DETECTED && timeDiff > END_OF_PROGRAM_SILENCE) {
             // End of program.
@@ -75,7 +77,7 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
                 mEatNextBit = false;
                 mLenientFirstBit = false;
             } else {
-                // Look for a bunch of consecutive zeros.
+                // If we see a 1 in the header, reset the count. We want a bunch of consecutive zeros.
                 if (bit && mState == TapeDecoderState.UNDECIDED && mDetectedZeros < MIN_HEADER_ZEROS) {
                     // Still not in header. Reset count.
                     mDetectedZeros = 0;
@@ -87,8 +89,8 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
                     }
                     mRecentBits = (mRecentBits << 1) | (bit ? 1 : 0);
                     if (mState == TapeDecoderState.UNDECIDED) {
-                        // Haven't found end of header yet.
-                        if ((mRecentBits & 0xFF) == 0xA5) {
+                        // Haven't found end of header yet. Look for it, preceded by zeros.
+                        if (mRecentBits == 0x000000A5) {
                             mBitCount = 0;
                             // For some reason we don't get a clock after this last 1.
                             mLenientFirstBit = true;
@@ -104,6 +106,7 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
                 }
             }
             mLastPulseFrame = frame;
+            mPulseHeight = 0;
         }
     }
 
