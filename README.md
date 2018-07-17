@@ -14,7 +14,7 @@ and a text program containing the decoded Basic program (`.bas`).
 
 # Filename convention
 
-I use this convention for audio files of data tapes:
+I use this convention for audio files of data cassettes:
 
     NAME-TAKE-TRACK-COPY.wav
 
@@ -45,7 +45,7 @@ tracks.
 
 # 500 baud (low-speed) encoding
 
-The TRS-80 Model I level 1 low-speed (500 baud) encoding is as follows:
+The TRS-80 Model I level 2 low-speed (500 baud) encoding is as follows:
 
 * Each bit takes 2 ms (500 Hz), regardless of value.
 * A "pulse" in this encoding is a single sine wave cycle lasting about 400 µs,
@@ -111,4 +111,55 @@ Instead of a jump from 500 baud (on the Model I) to 1500 baud, they could have
 claimed nearly 2500 baud! If anyone knows why they made this decision, please
 let me know.
 
+# Basic decoding
+
+In order to save space and speed up execution, Basic programs in memory and on
+cassette are stored with each Basic token replaced by a single byte. For example,
+the `PRINT` token is saved as byte 0xB2. When the user enters a new line of
+Basic code, the tokens are replaced by their single-byte version, and the reverse
+is done when listing the program.
+
+The `Basic.java` source file converts the tokenized version back to text and
+saves the program with a `.bas` extension. Basic programs on cassette have the
+following format:
+
+* The three bytes 0xD3 0xD3 0xD3.
+* A single byte for the name of the program. This is the name specified
+  in the `CSAVE` command.
+* For each line in the program:
+  * Two little-endian bytes for the memory address of the next line in
+    the program. This is useful in memory when zipping through the program.
+    Two zero bytes indicate the end of the program. The values stored
+    on cassette are ignored and regenerated when loaded.
+  * Two little-endian bytes for the line number.
+  * The code itself.
+
+There's one tricky bit about the decoding. There are two ways to write
+comments. One is the `REM` keyword, which starts a statement:
+
+    20 INPUT N$:REM Get the name of the user.
+
+The second is the single quote, which needn't start a new statement:
+
+    20 INPUT N$ ' Get the name of the user.
+
+To make this easier to execute, they used a trick for saving the single quote
+comment character. They internally replaced the single quote with this
+three-byte sequence:
+
+* A statement-separating colon `:`.
+* The token for `REM` (0x93).
+* A special token for the single quote comment (0xFB).
+
+When listed, these three bytes were displayed as a single quote. When executed,
+they looked like an old-style `REM` statement. This line:
+
+    20 INPUT N$ ' Get the name of the user.
+
+appeared this way to the interpreter:
+
+    20 INPUT N$ :REM* Get the name of the user.
+
+where the `*` above is actually the 0xFB character, ignored since it's
+inside a comment.
 

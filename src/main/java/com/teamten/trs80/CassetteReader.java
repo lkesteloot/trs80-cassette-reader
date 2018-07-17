@@ -26,14 +26,8 @@ public class CassetteReader {
     public static final int HZ = 44100;
     private static final boolean FORCE = true;
     private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
-    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-3-";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/L-2.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/tmp-";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-1-1.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-5-";
-//    private static final String INPUT_PATHNAME = CASS_DIR + "/B-2.wav";
-//    private static final String OUTPUT_PREFIX = CASS_DIR + "/B-7-";
+    private static final String INPUT_PATHNAME = CASS_DIR + "/M-2.wav";
+    private static final String OUTPUT_PREFIX = CASS_DIR + "/M-3-";
 
     enum BitType { ZERO, ONE, START, BAD }
 
@@ -66,7 +60,6 @@ public class CassetteReader {
 
         System.out.println("Performing high-pass filter.");
         samples = highPassFilter(samples, 50);
-
 
         if (false) {
             // Dump filtered data.
