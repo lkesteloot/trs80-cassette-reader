@@ -2,6 +2,9 @@ group 'teamten'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'application'
+
+mainClassName = "com.teamten.trs80.CassetteReader"
 
 sourceCompatibility = 1.8
 

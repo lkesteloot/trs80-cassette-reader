@@ -25,7 +25,7 @@ import java.util.List;
 public class CassetteReader {
     public static final int HZ = 44100;
     private static final boolean FORCE = true;
-    private static final String CASS_DIR = "/Users/lk/Dropbox/Team Ten/Nostalgia/TRS-80 Cassettes";
+    private static final String CASS_DIR = "path/to/files";
     private static final String INPUT_PATHNAME = CASS_DIR + "/M-2.wav";
     private static final String OUTPUT_PREFIX = CASS_DIR + "/M-3-";
 
@@ -63,7 +63,7 @@ public class CassetteReader {
 
         if (false) {
             // Dump filtered data.
-            writeWavFile(samples, new File("/Users/lk/tmp/filtered.wav"));
+            writeWavFile(samples, new File("/some/path/tmp/filtered.wav"));
         }
 
         if (false) {

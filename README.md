@@ -12,6 +12,14 @@ a sequence of files, three for each recording on the cassette: a generated
 high-speed WAV file (`.wav`); a binary file containing the raw bits (`.bin`);
 and a text program containing the decoded Basic program (`.bas`).
 
+# Running
+
+Run with:
+
+    % ./gradlew run
+
+The file paths are hard-coded in the `CassetteReader` class.
+
 # Filename convention
 
 I use this convention for audio files of data cassettes:
