@@ -16,9 +16,11 @@ and a text program containing the decoded Basic program (`.bas`).
 
 Run with:
 
-    % ./gradlew run
+    % ./gradlew run --args "INPUT_PATHNAME OUTPUT_PREFIX"
 
-The file paths are hard-coded in the `CassetteReader` class.
+For example:
+
+    % ./gradlew run --args "M-2.wav M-2-"
 
 # Filename convention
 

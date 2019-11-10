@@ -25,9 +25,6 @@ import java.util.List;
 public class CassetteReader {
     public static final int HZ = 44100;
     private static final boolean FORCE = true;
-    private static final String CASS_DIR = "path/to/files";
-    private static final String INPUT_PATHNAME = CASS_DIR + "/M-2.wav";
-    private static final String OUTPUT_PREFIX = CASS_DIR + "/M-3-";
 
     enum BitType { ZERO, ONE, START, BAD }
 
@@ -56,14 +53,22 @@ public class CassetteReader {
     }
 
     public static void main(String[] args) throws Exception {
-        short[] samples = readWavFile(new File(INPUT_PATHNAME));
+        if (args.length != 2) {
+            System.err.println("Usage: ./gradlew run --args \"INPUT_PATHNAME OUTPUT_PREFIX\"");
+            System.exit(1);
+        }
+
+        String inputPathname = args[0];
+        String outputPrefix = args[1];
+
+        short[] samples = readWavFile(new File(inputPathname));
 
         System.out.println("Performing high-pass filter.");
         samples = highPassFilter(samples, 50);
 
         if (false) {
             // Dump filtered data.
-            writeWavFile(samples, new File("/some/path/tmp/filtered.wav"));
+            writeWavFile(samples, new File("filtered.wav"));
         }
 
         if (false) {
@@ -73,7 +78,7 @@ public class CassetteReader {
                 int diff = i >= 7 ? samples[i - 7] - samples[i] : 0;
                 pulseFrames[i] = (short) Math.max(Math.min(diff, Short.MAX_VALUE), Short.MIN_VALUE);
             }
-            writeWavFile(pulseFrames, new File(CASS_DIR + "/pulse.wav"));
+            writeWavFile(pulseFrames, new File("pulse.wav"));
         }
 
         int instanceNumber = 1;
@@ -171,7 +176,7 @@ public class CassetteReader {
                     String suffix = isProgram ? "" : "-binary";
 
                     // Binary dump.
-                    String basePathname = OUTPUT_PREFIX + trackNumber + "-" + copyNumber + suffix;
+                    String basePathname = outputPrefix + trackNumber + "-" + copyNumber + suffix;
                     OutputStream fos = new FileOutputStream(basePathname + ".bin");
                     fos.write(outputBytes);
                     fos.close();
