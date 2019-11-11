@@ -24,6 +24,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
+/**
+ * Tools for decoding Basic programs.
+ */
 public class Basic {
     // Starts at 0x80.
     private static final String[] TOKENS = {
@@ -50,6 +53,9 @@ public class Basic {
     private static final int ELSE = 0x95;
     private static final int EOF = -1;
 
+    /**
+     * Parser state.
+     */
     private enum State {
         /**
          * Normal part of line.
@@ -77,6 +83,10 @@ public class Basic {
         COLON_REM
     }
 
+    /**
+     * Decode a tokenized Basic program into a string.
+     * @return the Basic program, or null if it couldn't be parsed.
+     */
     public static String fromTokenized(byte[] bytes) {
         StringWriter stringWriter = new StringWriter();
         PrintWriter out = new PrintWriter(stringWriter);
@@ -88,7 +98,7 @@ public class Basic {
             return null;
         }
 
-        // One-byte ASCII program name.
+        // One-byte ASCII program name. This is nearly always meaningless, so we do nothing with it.
         b.read();
 
         while (true) {
@@ -221,6 +231,9 @@ public class Basic {
         return low + high*256;
     }
 
+    /**
+     * Test runner.
+     */
     public static void main(String[] args) throws IOException {
         System.out.println(fromTokenized(Files.toByteArray(new File(args[0]))));
     }

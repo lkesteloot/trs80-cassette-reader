@@ -25,7 +25,7 @@ public interface TapeDecoder {
     /**
      * Handle the sample at "frame".
      */
-    void handleSample(short[] samples, int frame);
+    void handleSample(Results results, short[] samples, int frame);
 
     /**
      * Get the state of the decoder. See the enum for valid state transitions.

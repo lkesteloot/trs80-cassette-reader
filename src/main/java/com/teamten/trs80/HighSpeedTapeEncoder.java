@@ -21,6 +21,9 @@ import com.google.common.primitives.Shorts;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Encodes high-speed (1500 baud) cassettes.
+ */
 public class HighSpeedTapeEncoder {
     /**
      * Length of a zero bit, in samples.
@@ -42,7 +45,7 @@ public class HighSpeedTapeEncoder {
      * Samples representing a long zero bit. This is the first start bit
      * after the end of the header. It's 1 ms longer than a regular zero.
      */
-    private static final short[] LONG_ZERO = generateCycle(ZERO_LENGTH + CassetteReader.HZ/1000);
+    private static final short[] LONG_ZERO = generateCycle(ZERO_LENGTH + AudioUtils.HZ/1000);
     /**
      * The final cycle in the entire waveform, which is necessary
      * to force that last negative-to-positive transition (and interrupt).
@@ -58,7 +61,7 @@ public class HighSpeedTapeEncoder {
         List<short[]> samplesList = new ArrayList<>();
 
         // Start with half a second of silence.
-        samplesList.add(new short[CassetteReader.HZ/2]);
+        samplesList.add(new short[AudioUtils.HZ/2]);
 
         // Header of 0x55.
         for (int i = 0; i < 256; i++) {
@@ -83,7 +86,7 @@ public class HighSpeedTapeEncoder {
         samplesList.add(FINAL_HALF_CYCLE);
 
         // End with half a second of silence.
-        samplesList.add(new short[CassetteReader.HZ/2]);
+        samplesList.add(new short[AudioUtils.HZ/2]);
 
         // Concatenate all samples.
         return Shorts.concat(samplesList.toArray(new short[0][]));

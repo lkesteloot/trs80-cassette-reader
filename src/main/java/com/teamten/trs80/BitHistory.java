@@ -47,6 +47,14 @@ public class BitHistory {
     }
 
     /**
+     * Creates a deep copy of the bit history.
+     */
+    public BitHistory(BitHistory bitHistory) {
+        mMaxSize = bitHistory.mMaxSize;
+        mHistory.addAll(bitHistory.mHistory);
+    }
+
+    /**
      * Add a bit to the history.
      */
     public void add(BitData bitData) {
@@ -75,6 +83,7 @@ public class BitHistory {
         // Create image.
         int width = 1200;
         int height = 400;
+        ImageUtils.setLogger(null);
         BufferedImage image = ImageUtils.make(width, height, MISSING_COLOR);
         Graphics2D g = ImageUtils.createGraphics(image);
 

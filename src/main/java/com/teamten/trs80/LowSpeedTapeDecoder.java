@@ -19,8 +19,9 @@ package com.teamten.trs80;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
-import static com.teamten.trs80.CassetteReader.frameToTimestamp;
-
+/**
+ * Decodes low-speed (500 baud) cassettes.
+ */
 public class LowSpeedTapeDecoder implements TapeDecoder {
     /**
      * Number of samples between the top of the pulse and the bottom of it.
@@ -38,7 +39,7 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
     /**
      * Number of quiet samples that would indicate the end of the program.
      */
-    private static final int END_OF_PROGRAM_SILENCE = CassetteReader.HZ/10;
+    private static final int END_OF_PROGRAM_SILENCE = AudioUtils.HZ/10;
     /**
      * Number of consecutive zero bits we require in the header before we're pretty
      * sure this is a low speed program.
@@ -70,7 +71,7 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
     }
 
     @Override
-    public void handleSample(short[] samples, int frame) {
+    public void handleSample(Results results, short[] samples, int frame) {
         // Differentiate to accentuate a pulse. Pulse go positive, then negative,
         // with a space of PULSE_PEAK_DISTANCE, so subtracting those generates a large
         // positive value at the bottom of the pulse.
@@ -91,15 +92,11 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
             boolean bit = timeDiff < BIT_DETERMINATOR;
             if (mEatNextPulse) {
                 if (mState == TapeDecoderState.DETECTED && !bit && !mLenientFirstBit) {
-                    System.out.println("Warning: At bit of wrong value at " +
-                            frameToTimestamp(frame) + ", diff = " + timeDiff + ", last = " +
-                            frameToTimestamp(mLastPulseFrame));
+                    results.mLog.println("Warning: At bit of wrong value at " +
+                            AudioUtils.frameToTimestamp(frame) + ", diff = " + timeDiff + ", last = " +
+                            AudioUtils.frameToTimestamp(mLastPulseFrame));
                     mHistory.add(new BitData(mLastPulseFrame, frame, BitType.BAD));
-                    try {
-                        mHistory.dump(samples, 0, "out.png");
-                    } catch (IOException e) {
-                        System.err.println("Can't write debug image: " + e.getMessage());
-                    }
+                    results.addBadSection(mHistory);
                 }
                 mEatNextPulse = false;
                 mLenientFirstBit = false;

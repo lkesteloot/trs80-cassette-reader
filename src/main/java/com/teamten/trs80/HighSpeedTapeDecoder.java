@@ -18,16 +18,20 @@ package com.teamten.trs80;
 
 import java.io.ByteArrayOutputStream;
 
-import static com.teamten.trs80.CassetteReader.frameToTimestamp;
-
+/**
+ * Decodes high-speed (1500 baud) cassettes.
+ */
 public class HighSpeedTapeDecoder implements TapeDecoder {
     private static final int THRESHOLD = 500;
+    // If we go this many frames without any crossing, then we can assume we're done.
+    private static final int MIN_SILENCE_FRAMES = 1000;
     private TapeDecoderState mState;
     private ByteArrayOutputStream mProgramBytes = new ByteArrayOutputStream();
     private int mOldSign = 0;
     private int mCycleSize = 0;
     private int mRecentBits = 0;
     private int mBitCount = 0;
+    private int mLastCrossingFrame = 0;
 
     public HighSpeedTapeDecoder() {
         mState = TapeDecoderState.UNDECIDED;
@@ -39,7 +43,7 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
     }
 
     @Override
-    public void handleSample(short[] samples, int frame) {
+    public void handleSample(Results results, short[] samples, int frame) {
         short sample = samples[frame];
         int newSign = sample > THRESHOLD ? 1
                 : sample < -THRESHOLD ? -1
@@ -47,6 +51,8 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
 
         // Detect zero-crossing.
         if (mOldSign != 0 && newSign != 0 && mOldSign != newSign) {
+            mLastCrossingFrame = frame;
+
             // Detect positive edge. That's the end of the cycle.
             if (mOldSign == -1) {
                 // Only consider cycles in the right range of periods.
@@ -65,15 +71,14 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
                         if (mBitCount == 1) {
                             if (bit) {
                                 System.out.printf("Bad start bit at byte %d, %s, cycle size %d. ******************\n",
-                                        mProgramBytes.size(), frameToTimestamp(frame), mCycleSize);
+                                        mProgramBytes.size(), AudioUtils.frameToTimestamp(frame), mCycleSize);
                                 mState = TapeDecoderState.ERROR;
                             }
                         }
 
                         // Got enough bits for a byte (including the start bit).
                         if (mBitCount == 9) {
-                            int b = mRecentBits & 0xFF;
-                            mProgramBytes.write(b);
+                            mProgramBytes.write(mRecentBits & 0xFF);
                             mBitCount = 0;
                         }
                     } else {
@@ -89,8 +94,6 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
                 } else if (mState == TapeDecoderState.DETECTED && mProgramBytes.size() > 0 && mCycleSize > 66) {
                     // 1.5 ms gap, end of recording.
                     // TODO pull this out of zero crossing.
-//                    System.out.printf("End of program found at byte %d, frame %d, %s.\n",
-//                            bs.getByteCount(), frame, frameToTimestamp(frame));
                     mState = TapeDecoderState.FINISHED;
                 }
 
@@ -104,6 +107,10 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
 
         if (newSign != 0) {
             mOldSign = newSign;
+        }
+
+        if (mState == TapeDecoderState.DETECTED && frame - mLastCrossingFrame > MIN_SILENCE_FRAMES) {
+            mState = TapeDecoderState.FINISHED;
         }
     }
 
