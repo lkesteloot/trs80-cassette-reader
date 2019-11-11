@@ -1,6 +1,23 @@
+/*
+ * Copyright 2019 Lawrence Kesteloot
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.teamten.trs80;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 import static com.teamten.trs80.CassetteReader.frameToTimestamp;
 
@@ -33,7 +50,7 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
      * The frame where we last detected a pulse.
      */
     private int mLastPulseFrame = 0;
-    private boolean mEatNextBit = false;
+    private boolean mEatNextPulse = false;
     private int mBitCount = 0;
     private int mRecentBits = 0;
     private boolean mLenientFirstBit = false;
@@ -42,6 +59,10 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
      * Height of the previous pulse. We set each pulse's threshold to 1/3 of the previous pulse's height.
      */
     private int mPulseHeight = 0;
+    /**
+     * Recent history of bits, for debugging.
+     */
+    private final BitHistory mHistory = new BitHistory(10);
 
     @Override
     public String getName() {
@@ -68,13 +89,19 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
             mState = TapeDecoderState.FINISHED;
         } else if (pulsing) {
             boolean bit = timeDiff < BIT_DETERMINATOR;
-            if (mEatNextBit) {
+            if (mEatNextPulse) {
                 if (mState == TapeDecoderState.DETECTED && !bit && !mLenientFirstBit) {
                     System.out.println("Warning: At bit of wrong value at " +
                             frameToTimestamp(frame) + ", diff = " + timeDiff + ", last = " +
                             frameToTimestamp(mLastPulseFrame));
+                    mHistory.add(new BitData(mLastPulseFrame, frame, BitType.BAD));
+                    try {
+                        mHistory.dump(samples, 0, "out.png");
+                    } catch (IOException e) {
+                        System.err.println("Can't write debug image: " + e.getMessage());
+                    }
                 }
-                mEatNextBit = false;
+                mEatNextPulse = false;
                 mLenientFirstBit = false;
             } else {
                 // If we see a 1 in the header, reset the count. We want a bunch of consecutive zeros.
@@ -83,11 +110,12 @@ public class LowSpeedTapeDecoder implements TapeDecoder {
                     mDetectedZeros = 0;
                 } else {
                     if (bit) {
-                        mEatNextBit = true;
+                        mEatNextPulse = true;
                     } else {
                         mDetectedZeros += 1;
                     }
                     mRecentBits = (mRecentBits << 1) | (bit ? 1 : 0);
+                    mHistory.add(new BitData(mLastPulseFrame, frame, bit ? BitType.ONE : BitType.ZERO));
                     if (mState == TapeDecoderState.UNDECIDED) {
                         // Haven't found end of header yet. Look for it, preceded by zeros.
                         if (mRecentBits == 0x000000A5) {

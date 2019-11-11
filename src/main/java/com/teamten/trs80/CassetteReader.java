@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Lawrence Kesteloot
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.teamten.trs80;
 
 import com.google.common.base.Charsets;
@@ -22,35 +38,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * Main class for reading a WAV file and parsing out the programs on it.
+ */
 public class CassetteReader {
     public static final int HZ = 44100;
     private static final boolean FORCE = true;
-
-    enum BitType { ZERO, ONE, START, BAD }
-
-    private static class BitData {
-        public final int mStartFrame;
-        public final int mEndFrame;
-        public final BitType mBitType;
-
-        public BitData(int startFrame, int endFrame, BitType bitType) {
-            mStartFrame = startFrame;
-            mEndFrame = endFrame;
-            mBitType = bitType;
-        }
-
-        public int getStartFrame() {
-            return mStartFrame;
-        }
-
-        public int getEndFrame() {
-            return mEndFrame;
-        }
-
-        public BitType getBitType() {
-            return mBitType;
-        }
-    }
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
@@ -64,7 +57,7 @@ public class CassetteReader {
         short[] samples = readWavFile(new File(inputPathname));
 
         System.out.println("Performing high-pass filter.");
-        samples = highPassFilter(samples, 50);
+        samples = highPassFilter(samples, 500);
 
         if (false) {
             // Dump filtered data.
@@ -127,7 +120,7 @@ public class CassetteReader {
                         System.out.printf("Decoder \"%s\" detected %d-%d at %s after %.1f seconds.\n",
                                 tapeDecoder.getName(), trackNumber, copyNumber, frameToTimestamp(frame), leadTime);
 
-                        // Throw away the rest.
+                        // Throw away the other decoders.
                         tapeDecoders = new TapeDecoder[] {
                                 tapeDecoder
                         };
@@ -135,8 +128,8 @@ public class CassetteReader {
                         state = tapeDecoder.getState();
                     }
                 } else {
-                    TapeDecoder tapeDecoder = tapeDecoders[0];
-                    state = tapeDecoder.getState();
+                    // See if we should keep going.
+                    state = tapeDecoders[0].getState();
                 }
             }
 
@@ -297,86 +290,6 @@ public class CassetteReader {
         AudioSystem.write(audioInputStream, AudioFileFormat.Type.WAVE, file);
     }
 
-    private static void dumpBitHistory(Collection<BitData> bitHistory, short samples[], int threshold, String pathname) throws IOException {
-        // Find width of entire image.
-        int minFrame = Integer.MAX_VALUE;
-        int maxFrame = Integer.MIN_VALUE;
-        for (BitData bitData : bitHistory) {
-            minFrame = Math.min(Math.min(bitData.getStartFrame(), bitData.getEndFrame()), minFrame);
-            maxFrame = Math.max(Math.max(bitData.getStartFrame(), bitData.getEndFrame()), maxFrame);
-        }
-        int frameWidth = maxFrame - minFrame + 1;
-
-        // Size of image.
-        int width = 1200;
-        int height = 800;
-
-        // Colors.
-        Color zeroBitColor = Color.BLACK;
-        Color oneBitColor = new Color(50, 50, 50);
-        Color startBitColor = new Color(20, 150, 20);
-        Color badBitColor = new Color(150, 20, 20);
-
-        BufferedImage image = ImageUtils.makeWhite(width, height);
-
-        int lastX = -1;
-        int lastY = -1;
-
-        Graphics2D g = ImageUtils.createGraphics(image);
-        for (BitData bitData : bitHistory) {
-            Color backgroundColor;
-            switch (bitData.getBitType()) {
-                case ZERO:
-                    backgroundColor = zeroBitColor;
-                    break;
-                case ONE:
-                    backgroundColor = oneBitColor;
-                    break;
-                case START:
-                    backgroundColor = startBitColor;
-                    break;
-                default:
-                case BAD:
-                    backgroundColor = badBitColor;
-                    break;
-            }
-
-            int startX = (bitData.getStartFrame() - minFrame) * width / frameWidth;
-            startX = Math.max(0, Math.min(startX, width - 1));
-            int endX = (bitData.getEndFrame() - minFrame) * width / frameWidth;
-            endX = Math.max(0, Math.min(endX, width - 1));
-            g.setColor(backgroundColor);
-            g.fillRect(startX, 0, endX, height - 1);
-
-            g.setColor(Color.WHITE);
-
-            for (int frame = bitData.getStartFrame(); frame <= bitData.getEndFrame(); frame++) {
-                int x = (frame - minFrame) * width / frameWidth;
-                x = Math.max(0, Math.min(x, width - 1));
-
-                int y = -samples[frame]*(height/2)/32768 + height/2;
-                y = Math.max(0, Math.min(y, height - 1));
-
-                if (lastX != -1) {
-                    g.drawLine(lastX, lastY, x, y);
-                }
-
-                lastX = x;
-                lastY = y;
-            }
-        }
-
-        g.setColor(Color.GRAY);
-        int y = height/2;
-        g.drawLine(0, y, width - 1, y);
-        y = threshold*(height/2)/32768 + height/2;
-        g.drawLine(0, y, width - 1, y);
-        y = -threshold*(height/2)/32768 + height/2;
-        g.drawLine(0, y, width - 1, y);
-
-        ImageUtils.save(image, pathname);
-    }
-
     /**
      * Simple high-pass filter.
      */
@@ -391,7 +304,9 @@ public class CassetteReader {
             }
 
             // Subtract out the average of the last "size" samples (to estimate local DC component).
-            out[i] = (short) (samples[i] - sum/size);
+            long value = samples[i] - sum/size;
+            // A high-pass filter can generate values outside the short range. Clamp it.
+            out[i] = (short) Math.min(Math.max(value, Short.MIN_VALUE), Short.MAX_VALUE);
         }
 
         return out;

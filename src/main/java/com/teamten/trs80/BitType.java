@@ -14,23 +14,26 @@
  * limitations under the License.
  */
 
-group 'teamten'
-version '1.0-SNAPSHOT'
+package com.teamten.trs80;
 
-apply plugin: 'java'
-apply plugin: 'application'
-
-mainClassName = "com.teamten.trs80.CassetteReader"
-
-sourceCompatibility = 1.8
-
-repositories {
-    maven { url "https://jitpack.io" }
-    jcenter()
-}
-
-dependencies {
-    implementation 'com.google.guava:guava:25.1-jre'
-    implementation 'com.github.lkesteloot:teamten-image:v1.2'
-    testImplementation group: 'junit', name: 'junit', version: '4.12'
+/**
+ * Information about a particular bit.
+ */
+enum BitType {
+    /**
+     * Represents a numerical zero (0).
+     */
+    ZERO,
+    /**
+     * Represents a numerical one (1).
+     */
+    ONE,
+    /**
+     * Represents a start bit in a byte.
+     */
+    START,
+    /**
+     * Represents an undecoded bit.
+     */
+    BAD
 }

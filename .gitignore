@@ -58,3 +58,9 @@ fabric.properties
 # For Gradle:
 .gradle
 /build
+
+# For our own program:
+/*.wav
+/*.bas
+/*.bin
+/*.png
