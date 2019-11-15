@@ -18,10 +18,13 @@ package com.teamten.trs80;
 
 import com.google.common.base.Charsets;
 import com.google.common.io.Files;
+import picocli.CommandLine;
 
+import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
@@ -30,25 +33,50 @@ import java.util.List;
 /**
  * Main class for reading a WAV file and parsing out the programs on it.
  */
-public class CassetteReader {
-    public static void main(String[] args) throws Exception {
-        if (args.length != 2) {
-            System.err.println("Usage: ./gradlew run --args \"INPUT_PATHNAME OUTPUT_PREFIX\"");
+public class CassetteReader implements Runnable {
+
+    @CommandLine.Parameters(index = "0", paramLabel = "INPUT_PATHNAME", description = "Input WAV file.")
+    private String mInputPathname;
+
+    @CommandLine.Parameters(index = "1", paramLabel = "OUTPUT_PREFIX", description = "Output prefix.")
+    private String mOutputPrefix;
+
+    @CommandLine.Option(names = { "--gui" }, description = "Show an interactive UI.")
+    private boolean mShowGui = false;
+
+    public static void main(String[] args) {
+        // Parse command-line parameters.
+        CommandLine.run(new CassetteReader(), args);
+    }
+
+    @Override
+    public void run() {
+        Results results;
+        try {
+            results = parsePrograms();
+        } catch (IOException e) {
+            System.err.println("I/O exception: " + e.getMessage());
             System.exit(1);
+            return; // Silence error.
         }
 
-        String inputPathname = args[0];
-        String outputPrefix = args[1];
-
-        new CassetteReader().parsePrograms(inputPathname, outputPrefix);
+        if (mShowGui) {
+            // Hangs program until UI quits.
+            new Gui(results);
+        }
     }
 
     /**
      * Parse the input file and generate various output files.
      */
-    private void parsePrograms(String inputPathname, String outputPrefix) throws Exception {
-        InputStream is = new FileInputStream(inputPathname);
-        short[] samples = AudioUtils.readWavFile(is, inputPathname);
+    private Results parsePrograms() throws IOException {
+        InputStream is = new FileInputStream(mInputPathname);
+        short[] samples;
+        try {
+            samples = AudioUtils.readWavFile(is, mInputPathname);
+        } catch (UnsupportedAudioFileException e) {
+            throw new IOException("Unsupported audio file: " + e.getMessage());
+        }
         Results results = parsePrograms(samples);
         System.out.print(results.getLog());
 
@@ -70,7 +98,7 @@ public class CassetteReader {
             byte[] binary = program.getBinary();
 
             // Binary dump.
-            String basePathname = outputPrefix + program.getTrack() + "-" + program.getCopy() + suffix;
+            String basePathname = mOutputPrefix + program.getTrack() + "-" + program.getCopy() + suffix;
             OutputStream fos = new FileOutputStream(basePathname + ".bin");
             fos.write(binary);
             fos.close();
@@ -116,6 +144,8 @@ public class CassetteReader {
             bitHistory.dump(samples, 0, "bad-" + counter + ".png");
             counter += 1;
         }
+
+        return results;
     }
 
     /**
@@ -123,9 +153,11 @@ public class CassetteReader {
      */
     Results parsePrograms(short[] samples) {
         Results results = new Results();
+        results.setOriginalSamples(samples);
 
         results.mLog.println("Performing high-pass filter.");
         samples = AudioUtils.highPassFilter(samples, 500);
+        results.setFilteredSamples(samples);
 
         int instanceNumber = 1;
         int trackNumber = 0;

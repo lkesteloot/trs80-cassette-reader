@@ -16,6 +16,9 @@
 
 package com.teamten.trs80;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Represents a program that was read from a cassette.
  */
@@ -24,6 +27,7 @@ class Program {
     private final int mCopy;
     private final int mStartFrame;
     private byte[] mBinary;
+    private final List<BitHistory> mBadSections = new ArrayList<>();
 
     public Program(int track, int copy, int startFrame) {
         mTrack = track;
@@ -49,6 +53,14 @@ class Program {
 
     public void setBinary(byte[] binary) {
         mBinary = binary;
+    }
+
+    public void addBadSections(List<BitHistory> badSections) {
+        mBadSections.addAll(badSections);
+    }
+
+    public List<BitHistory> getBadSections() {
+        return mBadSections;
     }
 
     /**

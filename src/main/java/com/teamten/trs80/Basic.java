@@ -16,13 +16,12 @@
 
 package com.teamten.trs80;
 
-import com.google.common.io.Files;
-
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 /**
  * Tools for decoding Basic programs.
@@ -235,6 +234,6 @@ public class Basic {
      * Test runner.
      */
     public static void main(String[] args) throws IOException {
-        System.out.println(fromTokenized(Files.toByteArray(new File(args[0]))));
+        System.out.println(fromTokenized(Files.readAllBytes(Paths.get(args[0]))));
     }
 }

@@ -33,6 +33,7 @@ dependencies {
     implementation 'com.google.guava:guava:28.1-jre'
     implementation 'com.github.lkesteloot:teamten-image:v1.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.4.2'
+    implementation 'info.picocli:picocli:3.7.0'
 }
 
 test {

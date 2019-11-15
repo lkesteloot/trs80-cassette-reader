@@ -17,7 +17,6 @@
 package com.teamten.trs80;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 
 /**
  * Decodes low-speed (500 baud) cassettes.

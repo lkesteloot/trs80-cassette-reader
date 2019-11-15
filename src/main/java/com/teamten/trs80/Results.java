@@ -38,6 +38,10 @@ class Results {
     }
 
     void addProgram(Program program) {
+        // Transfer the bad sections to this program.
+        program.addBadSections(mBadSections);
+        mBadSections.clear();
+
         mPrograms.add(program);
     }
 
@@ -51,6 +55,22 @@ class Results {
 
     public List<BitHistory> getBadSections() {
         return mBadSections;
+    }
+
+    public short[] getOriginalSamples() {
+        return mOriginalSamples;
+    }
+
+    public void setOriginalSamples(short[] originalSamples) {
+        mOriginalSamples = originalSamples;
+    }
+
+    public short[] getFilteredSamples() {
+        return mFilteredSamples;
+    }
+
+    public void setFilteredSamples(short[] filteredSamples) {
+        mFilteredSamples = filteredSamples;
     }
 
     /**

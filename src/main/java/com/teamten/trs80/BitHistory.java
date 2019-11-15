@@ -71,6 +71,29 @@ public class BitHistory {
      * @param imagePathname output image pathname.
      */
     public void dump(short[] samples, int threshold, String imagePathname) throws IOException {
+        // Create image.
+        int width = 1200;
+        int height = 400;
+        ImageUtils.setLogger(null);
+        BufferedImage image = ImageUtils.makeWhite(width, height);
+        Graphics2D g = ImageUtils.createGraphics(image);
+        draw(samples, threshold, width, height, g);
+        ImageUtils.save(image, imagePathname);
+    }
+
+    /**
+     * Draw the history into a graphics context.
+     * @param samples all samples of the file. The numbers in the BitData objects are indices into this array.
+     * @param threshold a Y value where a line should be drawn (both positive and negative). Use 0 for none.
+     * @param width width of canvas.
+     * @param height height of canvas.
+     * @param g graphics context.
+     */
+    public void draw(short[] samples, int threshold, int width, int height, Graphics2D g) {
+        // Fill the background.
+        g.setColor(MISSING_COLOR);
+        g.fillRect(0, 0, width, height);
+
         // Find the bounds of the samples to draw.
         int minFrame = Integer.MAX_VALUE;
         int maxFrame = Integer.MIN_VALUE;
@@ -79,13 +102,6 @@ public class BitHistory {
             maxFrame = Math.max(Math.max(bitData.getStartFrame(), bitData.getEndFrame()), maxFrame);
         }
         int frameWidth = maxFrame - minFrame + 1;
-
-        // Create image.
-        int width = 1200;
-        int height = 400;
-        ImageUtils.setLogger(null);
-        BufferedImage image = ImageUtils.make(width, height, MISSING_COLOR);
-        Graphics2D g = ImageUtils.createGraphics(image);
 
         // Draw all backgrounds.
         for (BitData bitData : mHistory) {
@@ -152,8 +168,6 @@ public class BitHistory {
             y = -threshold*(height/2)/32768 + height/2;
             g.drawLine(0, y, width - 1, y);
         }
-
-        ImageUtils.save(image, imagePathname);
     }
 
     /**
