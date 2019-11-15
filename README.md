@@ -22,6 +22,12 @@ For example:
 
     % ./gradlew run --args "M-2.wav M-2-"
 
+Add the `--gui` flag to bring up a simple interface to browse the results:
+
+    % ./gradlew run --args "M-2.wav M-2- --gui"
+
+(The flag must be at the end or Gradle will interpret it as its own.)
+
 # Filename convention
 
 I use this convention for audio files of data cassettes:
