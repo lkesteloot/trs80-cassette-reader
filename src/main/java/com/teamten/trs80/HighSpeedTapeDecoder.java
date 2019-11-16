@@ -32,6 +32,10 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
     private int mRecentBits = 0;
     private int mBitCount = 0;
     private int mLastCrossingFrame = 0;
+    /**
+     * Recent history of bits, for debugging.
+     */
+    private final BitHistory mHistory = new BitHistory(10);
 
     public HighSpeedTapeDecoder() {
         mState = TapeDecoderState.UNDECIDED;
@@ -62,6 +66,7 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
 
                     // Bits are MSb to LSb.
                     mRecentBits = (mRecentBits << 1) | (bit ? 1 : 0);
+                    mHistory.add(new BitData(frame - mCycleSize, frame, bit ? BitType.ONE : BitType.ZERO));
 
                     // If we're in the program, add the bit to our stream.
                     if (mState == TapeDecoderState.DETECTED) {
@@ -70,9 +75,11 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
                         // Just got a start bit. Must be zero.
                         if (mBitCount == 1) {
                             if (bit) {
-                                System.out.printf("Bad start bit at byte %d, %s, cycle size %d. ******************\n",
+                                results.mLog.printf("Bad start bit at byte %d, %s, cycle size %d.\n",
                                         mProgramBytes.size(), AudioUtils.frameToTimestamp(frame), mCycleSize);
                                 mState = TapeDecoderState.ERROR;
+                                mHistory.add(new BitData(frame - mCycleSize, frame, BitType.BAD));
+                                results.addBadSection(mHistory);
                             }
                         }
 
