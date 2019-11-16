@@ -197,11 +197,11 @@ public class CassetteReader implements Runnable {
                         // See how long it took to find it. A large gap means a new track.
                         double leadTime = (double) (frame - searchFrameStart)/AudioUtils.HZ;
                         if (leadTime > 10 || programStartFrame == -1) {
-                            programStartFrame = frame;
                             trackNumber += 1;
                             copyNumber = 1;
                         }
 
+                        programStartFrame = frame;
                         results.mLog.printf("Decoder \"%s\" detected %d-%d at %s after %.1f seconds.\n",
                                 tapeDecoder.getName(), trackNumber, copyNumber, AudioUtils.frameToTimestamp(frame), leadTime);
 
@@ -229,10 +229,14 @@ public class CassetteReader implements Runnable {
 
                 case ERROR:
                     results.mLog.println("Decoder detected an error; skipping program.");
+                    Program program = new Program(trackNumber, copyNumber, programStartFrame);
+                    program.setBinary(tapeDecoders[0].getProgram());
+                    results.addProgram(program);
                     break;
 
                 case FINISHED:
-                    Program program = new Program(trackNumber, copyNumber, programStartFrame);
+                    results.mLog.println("Found end of program at " + AudioUtils.frameToTimestamp(frame) + ".");
+                    program = new Program(trackNumber, copyNumber, programStartFrame);
                     program.setBinary(tapeDecoders[0].getProgram());
                     results.addProgram(program);
                     break;

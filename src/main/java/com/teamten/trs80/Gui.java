@@ -36,7 +36,8 @@ class Gui {
     private static final int HEIGHT = 1000;
     private static final int TITLE_BAR_HEIGHT = 20;
     private final TextArea mTextArea;
-    private final BitHistoryCanvas mBitHistoryCanvas;
+    private final BitHistoryCanvas mBitHistoryOriginalCanvas;
+    private final BitHistoryCanvas mBitHistoryFilteredCanvas;
 
     /**
      * Each row of the menu has a type.
@@ -134,9 +135,16 @@ class Gui {
         frame.add(mTextArea);
 
         // Canvas for drawing bit history.
-        mBitHistoryCanvas = new BitHistoryCanvas(results.getOriginalSamples());
-        mBitHistoryCanvas.setBounds(200, TITLE_BAR_HEIGHT, WIDTH - 200, HEIGHT - TITLE_BAR_HEIGHT);
-        frame.add(mBitHistoryCanvas);
+        int y = TITLE_BAR_HEIGHT;
+        int margin = 2;
+        int height = (HEIGHT - TITLE_BAR_HEIGHT - margin)/2;
+        mBitHistoryOriginalCanvas = new BitHistoryCanvas(results.getOriginalSamples());
+        mBitHistoryOriginalCanvas.setBounds(200, y, WIDTH - 200, height);
+        frame.add(mBitHistoryOriginalCanvas);
+        y += height + margin;
+        mBitHistoryFilteredCanvas = new BitHistoryCanvas(results.getFilteredSamples());
+        mBitHistoryFilteredCanvas.setBounds(200, y, WIDTH - 200, HEIGHT - y);
+        frame.add(mBitHistoryFilteredCanvas);
 
         // To quit the program.
         frame.addWindowListener(new WindowAdapter(){
@@ -148,6 +156,12 @@ class Gui {
         frame.setSize(WIDTH, HEIGHT);
         frame.setLayout(null);
         frame.setVisible(true);
+
+        // Pre-select first track.
+        if (!infoSelectorList.isEmpty()) {
+            list.select(0);
+            showProgramInfo(infoSelectorList.get(0));
+        }
     }
 
     /**
@@ -169,7 +183,8 @@ class Gui {
 
             case BAD_SECTION:
                 BitHistory bitHistory = infoSelector.getBadSection();
-                mBitHistoryCanvas.setBitHistory(bitHistory);
+                mBitHistoryOriginalCanvas.setBitHistory(bitHistory);
+                mBitHistoryFilteredCanvas.setBitHistory(bitHistory);
                 break;
         }
 
@@ -179,12 +194,14 @@ class Gui {
             case BASIC:
                 mTextArea.setCaretPosition(0);
                 mTextArea.setVisible(true);
-                mBitHistoryCanvas.setVisible(false);
+                mBitHistoryOriginalCanvas.setVisible(false);
+                mBitHistoryFilteredCanvas.setVisible(false);
                 break;
 
             case BAD_SECTION:
                 mTextArea.setVisible(false);
-                mBitHistoryCanvas.setVisible(true);
+                mBitHistoryOriginalCanvas.setVisible(true);
+                mBitHistoryFilteredCanvas.setVisible(true);
                 break;
         }
     }

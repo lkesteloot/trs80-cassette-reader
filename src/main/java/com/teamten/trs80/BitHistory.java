@@ -134,7 +134,7 @@ public class BitHistory {
 
             // Draw background.
             g.setColor(backgroundColor);
-            g.fillRect(startX, 0, endX - startX, height - 1);
+            g.fillRect(startX, 0, endX - startX, height);
         }
 
         // Draw signal.
