@@ -35,7 +35,7 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
     /**
      * Recent history of bits, for debugging.
      */
-    private final BitHistory mHistory = new BitHistory(10);
+    private final BitHistory mHistory = new BitHistory(20);
 
     public HighSpeedTapeDecoder() {
         mState = TapeDecoderState.UNDECIDED;
@@ -66,7 +66,6 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
 
                     // Bits are MSb to LSb.
                     mRecentBits = (mRecentBits << 1) | (bit ? 1 : 0);
-                    mHistory.add(new BitData(frame - mCycleSize, frame, bit ? BitType.ONE : BitType.ZERO));
 
                     // If we're in the program, add the bit to our stream.
                     if (mState == TapeDecoderState.DETECTED) {
@@ -80,7 +79,11 @@ public class HighSpeedTapeDecoder implements TapeDecoder {
                                 mState = TapeDecoderState.ERROR;
                                 mHistory.add(new BitData(frame - mCycleSize, frame, BitType.BAD));
                                 results.addBadSection(mHistory);
+                            } else {
+                                mHistory.add(new BitData(frame - mCycleSize, frame, BitType.START));
                             }
+                        } else {
+                            mHistory.add(new BitData(frame - mCycleSize, frame, bit ? BitType.ONE : BitType.ZERO));
                         }
 
                         // Got enough bits for a byte (including the start bit).

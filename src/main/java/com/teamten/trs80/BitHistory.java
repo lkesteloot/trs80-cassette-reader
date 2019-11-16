@@ -30,11 +30,11 @@ import java.util.Deque;
  * a bit can't be decoded.
  */
 public class BitHistory {
-    private static final Color ZERO_BIT_COLOR = Color.BLACK;
-    private static final Color ONE_BIT_COLOR = new Color(50, 50, 50);
+    private static final Color ZERO_BIT_COLOR = new Color(50, 50, 50);
+    private static final Color ONE_BIT_COLOR = new Color(100, 100, 100);
     private static final Color START_BIT_COLOR = new Color(20, 150, 20);
     private static final Color BAD_BIT_COLOR = new Color(150, 20, 20);
-    private static final Color MISSING_COLOR = new Color(150, 20, 100);
+    private static final Color MISSING_COLOR = Color.BLACK;
     public static final Color LINE_COLOR = Color.WHITE;
     private final int mMaxSize;
     private final Deque<BitData> mHistory = new ArrayDeque<>();
@@ -101,6 +101,8 @@ public class BitHistory {
             minFrame = Math.min(Math.min(bitData.getStartFrame(), bitData.getEndFrame()), minFrame);
             maxFrame = Math.max(Math.max(bitData.getStartFrame(), bitData.getEndFrame()), maxFrame);
         }
+        // Show a bit past the error point.
+        maxFrame = Math.min(maxFrame + 100, samples.length - 1);
         int frameWidth = maxFrame - minFrame + 1;
 
         // Draw all backgrounds.
