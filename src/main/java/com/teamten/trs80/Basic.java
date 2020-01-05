@@ -200,8 +200,9 @@ public class Basic {
             // Deal with eaten tokens.
             if (state == State.COLON || state == State.COLON_REM) {
                 out.print(':');
-                if (state == State.COLON_REM)
+                if (state == State.COLON_REM) {
                     out.print("REM");
+                }
                 /// state = State.NORMAL;
             }
 

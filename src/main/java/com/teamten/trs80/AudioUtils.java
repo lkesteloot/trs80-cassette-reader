@@ -114,7 +114,6 @@ public class AudioUtils {
         return samples;
     }
 
-
     /**
      * Simple high-pass filter.
      */
