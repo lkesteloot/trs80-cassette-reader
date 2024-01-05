@@ -1,3 +1,4 @@
+This project has been rewritten in TypeScript and moved to https://github.com/lkesteloot/trs80
 
 This is a Java program that reads WAV files of low-speed (500 baud) and
 high-speed (1500 baud) TRS-80 Model I and Model III cassettes
